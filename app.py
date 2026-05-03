@@ -196,31 +196,41 @@ try:
     st.sidebar.title("Observatorio Laboral")
     st.sidebar.write("Alumni UniSabana - IN-DES Challenge")
 
-    opcion_menu = st.sidebar.radio(
-        "Navegación",
+    modulo_principal = st.sidebar.radio(
+        "Navegación principal",
         [
             "Inicio",
-            "Brechas oferta-demanda",
-            "   • Resumen por programa",
-            "   • Competencias críticas",
-            "   • Detalle de brecha"
+            "Brechas oferta-demanda"
         ]
     )
+
+    seccion_brechas = None
+
+    if modulo_principal == "Brechas oferta-demanda":
+        with st.sidebar.expander("Opciones de brecha", expanded=True):
+            seccion_brechas = st.radio(
+                "Selecciona una sección",
+                [
+                    "Resumen por programa",
+                    "Competencias críticas",
+                    "Detalle de brecha"
+                ],
+                label_visibility="collapsed"
+            )
 
     st.sidebar.divider()
     st.sidebar.caption("Fuente: Supabase PostgreSQL")
     st.sidebar.caption("MVP: Brecha oferta-demanda")
 
-    if opcion_menu == "Inicio":
+    if modulo_principal == "Inicio":
         mostrar_inicio(resumen, criticas, brecha_completa)
-    elif opcion_menu == "Brechas oferta-demanda":
-        mostrar_resumen_programas(resumen)
-    elif opcion_menu == "   • Resumen por programa":
-        mostrar_resumen_programas(resumen)
-    elif opcion_menu == "   • Competencias críticas":
-        mostrar_competencias_criticas(criticas)
-    elif opcion_menu == "   • Detalle de brecha":
-        mostrar_brecha_detallada(brecha_completa)
+    elif modulo_principal == "Brechas oferta-demanda":
+        if seccion_brechas == "Resumen por programa":
+            mostrar_resumen_programas(resumen)
+        elif seccion_brechas == "Competencias críticas":
+            mostrar_competencias_criticas(criticas)
+        elif seccion_brechas == "Detalle de brecha":
+            mostrar_brecha_detallada(brecha_completa)
 
 except Exception as e:
     st.error("No se pudo conectar con Supabase o cargar los datos.")
