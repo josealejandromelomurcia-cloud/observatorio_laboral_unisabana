@@ -196,39 +196,31 @@ try:
     st.sidebar.title("Observatorio Laboral")
     st.sidebar.write("Alumni UniSabana - IN-DES Challenge")
 
-    modulo = st.sidebar.selectbox(
-        "Módulo principal",
+    opcion_menu = st.sidebar.radio(
+        "Navegación",
         [
             "Inicio",
-            "Brechas oferta-demanda"
+            "Brechas oferta-demanda",
+            "   • Resumen por programa",
+            "   • Competencias críticas",
+            "   • Detalle de brecha"
         ]
     )
-
-    seccion_brechas = None
-
-    if modulo == "Brechas oferta-demanda":
-        seccion_brechas = st.sidebar.selectbox(
-            "Sección del módulo",
-            [
-                "Resumen por programa",
-                "Competencias críticas",
-                "Detalle de brecha"
-            ]
-        )
 
     st.sidebar.divider()
     st.sidebar.caption("Fuente: Supabase PostgreSQL")
     st.sidebar.caption("MVP: Brecha oferta-demanda")
 
-    if modulo == "Inicio":
+    if opcion_menu == "Inicio":
         mostrar_inicio(resumen, criticas, brecha_completa)
-    elif modulo == "Brechas oferta-demanda":
-        if seccion_brechas == "Resumen por programa":
-            mostrar_resumen_programas(resumen)
-        elif seccion_brechas == "Competencias críticas":
-            mostrar_competencias_criticas(criticas)
-        elif seccion_brechas == "Detalle de brecha":
-            mostrar_brecha_detallada(brecha_completa)
+    elif opcion_menu == "Brechas oferta-demanda":
+        mostrar_resumen_programas(resumen)
+    elif opcion_menu == "   • Resumen por programa":
+        mostrar_resumen_programas(resumen)
+    elif opcion_menu == "   • Competencias críticas":
+        mostrar_competencias_criticas(criticas)
+    elif opcion_menu == "   • Detalle de brecha":
+        mostrar_brecha_detallada(brecha_completa)
 
 except Exception as e:
     st.error("No se pudo conectar con Supabase o cargar los datos.")
