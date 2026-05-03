@@ -5,8 +5,10 @@ from supabase import create_client
 
 st.set_page_config(
     page_title="Observatorio Laboral UniSabana",
+    page_icon="📊",
     layout="wide"
 )
+
 
 @st.cache_resource
 def conectar_supabase():
@@ -14,11 +16,13 @@ def conectar_supabase():
     key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
+
 @st.cache_data(ttl=600)
 def cargar_resumen_brechas():
     supabase = conectar_supabase()
     respuesta = supabase.table("resumen_brechas_por_programa").select("*").execute()
     return pd.DataFrame(respuesta.data)
+
 
 @st.cache_data(ttl=600)
 def cargar_competencias_criticas():
@@ -26,34 +30,59 @@ def cargar_competencias_criticas():
     respuesta = supabase.table("vista_competencias_criticas").select("*").execute()
     return pd.DataFrame(respuesta.data)
 
-st.title("Observatorio Laboral UniSabana")
-st.subheader("Brecha oferta-demanda")
 
-st.write(
-    "Esta plataforma permite analizar la alineación entre las competencias "
-    "demandadas por el mercado laboral y las competencias desarrolladas por "
-    "los programas académicos."
-)
+@st.cache_data(ttl=600)
+def cargar_brecha_completa():
+    supabase = conectar_supabase()
+    respuesta = supabase.table("vista_brecha_oferta_demanda").select("*").execute()
+    return pd.DataFrame(respuesta.data)
 
-try:
-    resumen = cargar_resumen_brechas()
-    criticas = cargar_competencias_criticas()
 
-    st.success("Conexión exitosa con Supabase.")
-
-    col1, col2, col3 = st.columns(3)
-
+def mostrar_kpis(resumen, criticas, brecha_completa):
     total_programas = resumen["nombre_programa"].nunique()
+    total_competencias = brecha_completa["nombre_competencia"].nunique()
     total_brechas_altas = resumen["brechas_altas"].sum()
     total_no_cubiertas = resumen["competencias_no_cubiertas"].sum()
 
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Programas evaluados", total_programas)
-    col2.metric("Brechas altas", int(total_brechas_altas))
-    col3.metric("Competencias no cubiertas", int(total_no_cubiertas))
+    col2.metric("Competencias analizadas", total_competencias)
+    col3.metric("Brechas altas", int(total_brechas_altas))
+    col4.metric("Competencias no cubiertas", int(total_no_cubiertas))
+
+
+def mostrar_inicio(resumen, criticas, brecha_completa):
+    st.title("Observatorio Laboral UniSabana")
+    st.subheader("Monitoreo de brecha oferta-demanda")
+
+    st.write(
+        "Esta plataforma analiza la alineación entre las competencias demandadas "
+        "por el mercado laboral y las competencias desarrolladas por los programas "
+        "académicos. El objetivo es generar evidencia para orientar decisiones sobre "
+        "oferta académica, fortalecimiento curricular y empleabilidad."
+    )
+
+    st.success("Conexión exitosa con Supabase.")
+    mostrar_kpis(resumen, criticas, brecha_completa)
 
     st.divider()
 
-    st.subheader("Resumen de brechas por programa")
+    st.markdown("### Lectura ejecutiva")
+    st.write(
+        "El sistema permite identificar competencias cubiertas, parcialmente cubiertas "
+        "y no cubiertas por programa académico. Para el MVP se prioriza la dimensión "
+        "de brecha oferta-demanda, porque permite construir un diagnóstico inicial sin "
+        "depender todavía de series históricas."
+    )
+
+
+def mostrar_resumen_programas(resumen):
+    st.title("Resumen por programa")
+    st.write(
+        "Esta sección muestra la cantidad de competencias evaluadas y el nivel de brecha "
+        "identificado para cada programa académico."
+    )
+
     st.dataframe(resumen, use_container_width=True)
 
     fig = px.bar(
@@ -61,26 +90,134 @@ try:
         x="nombre_programa",
         y=["brechas_altas", "brechas_medias", "brechas_bajas"],
         title="Niveles de brecha por programa",
-        barmode="group"
+        barmode="group",
+        labels={
+            "nombre_programa": "Programa académico",
+            "value": "Cantidad de competencias",
+            "variable": "Nivel de brecha"
+        }
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    st.divider()
 
-    st.subheader("Competencias críticas")
-    st.write("Competencias con brecha alta o media.")
-
-    programa = st.selectbox(
-        "Selecciona un programa académico",
-        ["Todos"] + sorted(criticas["nombre_programa"].unique().tolist())
+def mostrar_competencias_criticas(criticas):
+    st.title("Competencias críticas")
+    st.write(
+        "Aquí se muestran las competencias con brecha alta o media. Estas son las más "
+        "importantes para priorizar acciones académicas o formativas."
     )
 
-    if programa != "Todos":
-        criticas_filtradas = criticas[criticas["nombre_programa"] == programa]
-    else:
-        criticas_filtradas = criticas
+    programas = ["Todos"] + sorted(criticas["nombre_programa"].dropna().unique().tolist())
+    programa = st.selectbox("Selecciona un programa académico", programas)
 
-    st.dataframe(criticas_filtradas, use_container_width=True)
+    if programa != "Todos":
+        datos = criticas[criticas["nombre_programa"] == programa]
+    else:
+        datos = criticas
+
+    col1, col2 = st.columns(2)
+
+    conteo_nivel = datos["nivel_brecha"].value_counts().reset_index()
+    conteo_nivel.columns = ["nivel_brecha", "cantidad"]
+
+    fig_nivel = px.pie(
+        conteo_nivel,
+        names="nivel_brecha",
+        values="cantidad",
+        title="Distribución de competencias críticas por nivel de brecha"
+    )
+    col1.plotly_chart(fig_nivel, use_container_width=True)
+
+    conteo_tipo = datos["tipo_competencia"].value_counts().reset_index()
+    conteo_tipo.columns = ["tipo_competencia", "cantidad"]
+
+    fig_tipo = px.bar(
+        conteo_tipo,
+        x="tipo_competencia",
+        y="cantidad",
+        title="Competencias críticas por tipo",
+        labels={
+            "tipo_competencia": "Tipo de competencia",
+            "cantidad": "Cantidad"
+        }
+    )
+    col2.plotly_chart(fig_tipo, use_container_width=True)
+
+    st.dataframe(datos, use_container_width=True)
+
+
+def mostrar_brecha_detallada(brecha_completa):
+    st.title("Detalle de brecha oferta-demanda")
+    st.write(
+        "Esta tabla integra programa académico, competencia de mercado, estado de brecha, "
+        "justificación y recomendación. Es la vista principal para análisis detallado."
+    )
+
+    programas = ["Todos"] + sorted(brecha_completa["nombre_programa"].dropna().unique().tolist())
+    estados = ["Todos"] + sorted(brecha_completa["estado_brecha"].dropna().unique().tolist())
+    niveles = ["Todos"] + sorted(brecha_completa["nivel_brecha"].dropna().unique().tolist())
+
+    col1, col2, col3 = st.columns(3)
+    programa = col1.selectbox("Programa", programas)
+    estado = col2.selectbox("Estado de brecha", estados)
+    nivel = col3.selectbox("Nivel de brecha", niveles)
+
+    datos = brecha_completa.copy()
+
+    if programa != "Todos":
+        datos = datos[datos["nombre_programa"] == programa]
+
+    if estado != "Todos":
+        datos = datos[datos["estado_brecha"] == estado]
+
+    if nivel != "Todos":
+        datos = datos[datos["nivel_brecha"] == nivel]
+
+    columnas = [
+        "nombre_programa",
+        "nombre_competencia",
+        "tipo_competencia",
+        "categoria",
+        "nivel_demanda",
+        "estado_brecha",
+        "nivel_brecha",
+        "justificacion",
+        "recomendacion"
+    ]
+
+    st.dataframe(datos[columnas], use_container_width=True)
+
+
+try:
+    resumen = cargar_resumen_brechas()
+    criticas = cargar_competencias_criticas()
+    brecha_completa = cargar_brecha_completa()
+
+    st.sidebar.title("Observatorio Laboral")
+    st.sidebar.write("Alumni UniSabana - IN-DES Challenge")
+
+    seccion = st.sidebar.radio(
+        "Navegación",
+        [
+            "Inicio",
+            "Resumen por programa",
+            "Competencias críticas",
+            "Detalle de brecha"
+        ]
+    )
+
+    st.sidebar.divider()
+    st.sidebar.caption("Fuente: Supabase PostgreSQL")
+    st.sidebar.caption("MVP: Brecha oferta-demanda")
+
+    if seccion == "Inicio":
+        mostrar_inicio(resumen, criticas, brecha_completa)
+    elif seccion == "Resumen por programa":
+        mostrar_resumen_programas(resumen)
+    elif seccion == "Competencias críticas":
+        mostrar_competencias_criticas(criticas)
+    elif seccion == "Detalle de brecha":
+        mostrar_brecha_detallada(brecha_completa)
 
 except Exception as e:
     st.error("No se pudo conectar con Supabase o cargar los datos.")
