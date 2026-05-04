@@ -37,6 +37,12 @@ def cargar_brecha_completa():
     respuesta = supabase.table("vista_brecha_oferta_demanda").select("*").execute()
     return pd.DataFrame(respuesta.data)
 
+@st.cache_data(ttl=600)
+def cargar_brechas_automaticas():
+    supabase = conectar_supabase()
+    respuesta = supabase.table("vista_comparacion_automatica_brechas").select("*").execute()
+    return pd.DataFrame(respuesta.data)
+
 
 def mostrar_kpis(resumen, criticas, brecha_completa):
     total_programas = resumen["nombre_programa"].nunique()
@@ -187,11 +193,88 @@ def mostrar_brecha_detallada(brecha_completa):
 
     st.dataframe(datos[columnas], use_container_width=True)
 
+def mostrar_brechas_automaticas(brechas_automaticas):
+    st.title("Brechas automáticas desde PDFs")
+    st.write(
+        "Esta sección muestra una comparación preliminar entre las competencias "
+        "detectadas automáticamente en PDFs del mercado laboral y las competencias "
+        "registradas para cada programa académico."
+    )
+
+    programas = ["Todos"] + sorted(brechas_automaticas["nombre_programa"].dropna().unique().tolist())
+    estados = ["Todos"] + sorted(brechas_automaticas["estado_brecha"].dropna().unique().tolist())
+    niveles = ["Todos"] + sorted(brechas_automaticas["nivel_brecha"].dropna().unique().tolist())
+
+    col1, col2, col3 = st.columns(3)
+    programa = col1.selectbox("Programa académico", programas, key="programa_auto")
+    estado = col2.selectbox("Estado de brecha", estados, key="estado_auto")
+    nivel = col3.selectbox("Nivel de brecha", niveles, key="nivel_auto")
+
+    datos = brechas_automaticas.copy()
+
+    if programa != "Todos":
+        datos = datos[datos["nombre_programa"] == programa]
+
+    if estado != "Todos":
+        datos = datos[datos["estado_brecha"] == estado]
+
+    if nivel != "Todos":
+        datos = datos[datos["nivel_brecha"] == nivel]
+
+    st.divider()
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Registros analizados", len(datos))
+    kpi2.metric("Competencias únicas", datos["nombre_competencia"].nunique())
+    kpi3.metric("Brechas altas", int((datos["nivel_brecha"] == "Alta").sum()))
+    kpi4.metric("No cubiertas", int((datos["estado_brecha"] == "No cubierta").sum()))
+
+    st.divider()
+
+    conteo_brechas = (
+        datos.groupby(["nombre_programa", "nivel_brecha"])
+        .size()
+        .reset_index(name="cantidad")
+    )
+
+    if not conteo_brechas.empty:
+        fig = px.bar(
+            conteo_brechas,
+            x="nombre_programa",
+            y="cantidad",
+            color="nivel_brecha",
+            title="Brechas automáticas por programa",
+            barmode="group",
+            labels={
+                "nombre_programa": "Programa académico",
+                "cantidad": "Cantidad",
+                "nivel_brecha": "Nivel de brecha"
+            }
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    columnas = [
+        "nombre_programa",
+        "nombre_competencia",
+        "tipo_competencia",
+        "categoria",
+        "nivel_demanda",
+        "frecuencia_aparicion",
+        "cantidad_fuentes",
+        "estado_brecha",
+        "nivel_brecha",
+        "justificacion",
+        "recomendacion"
+    ]
+
+    st.subheader("Tabla de comparación automática")
+    st.dataframe(datos[columnas], use_container_width=True)
 
 try:
     resumen = cargar_resumen_brechas()
     criticas = cargar_competencias_criticas()
     brecha_completa = cargar_brecha_completa()
+    brechas_automaticas = cargar_brechas_automaticas()
 
     st.sidebar.title("Observatorio Laboral")
     st.sidebar.write("Alumni UniSabana - IN-DES Challenge")
@@ -213,7 +296,8 @@ try:
                 [
                     "Resumen por programa",
                     "Competencias críticas",
-                    "Detalle de brecha"
+                    "Detalle de brecha",
+                    "Brechas automáticas desde PDFs"
                 ],
                 label_visibility="collapsed"
             )
@@ -231,6 +315,8 @@ try:
             mostrar_competencias_criticas(criticas)
         elif seccion_brechas == "Detalle de brecha":
             mostrar_brecha_detallada(brecha_completa)
+        elif seccion_brechas == "Brechas automáticas desde PDFs":
+            mostrar_brechas_automaticas(brechas_automaticas)
 
 except Exception as e:
     st.error("No se pudo conectar con Supabase o cargar los datos.")
