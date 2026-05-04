@@ -825,9 +825,8 @@ def calcular_resumen_filtrado(datos):
     resumen = (
         datos.groupby("nombre_programa")
         .agg(
-            total_competencias_evaluadas=("nombre_competencia", "count"),
+            competencias_mercado=("nombre_competencia", "nunique"),
             competencias_cubiertas=("estado_brecha", lambda x: (x == "Cubierta").sum()),
-            competencias_parcialmente_cubiertas=("estado_brecha", lambda x: (x == "Parcialmente cubierta").sum()),
             competencias_no_cubiertas=("estado_brecha", lambda x: (x == "No cubierta").sum()),
             brechas_altas=("nivel_brecha", lambda x: (x == "Alta").sum()),
             brechas_medias=("nivel_brecha", lambda x: (x == "Media").sum()),
@@ -836,7 +835,126 @@ def calcular_resumen_filtrado(datos):
         .reset_index()
     )
 
-    return resumen
+    resumen["total_evaluaciones"] = (
+        resumen["competencias_cubiertas"] + resumen["competencias_no_cubiertas"]
+    )
+
+    resumen["porcentaje_cobertura"] = (
+        100 * resumen["competencias_cubiertas"] / resumen["total_evaluaciones"].replace(0, pd.NA)
+    ).fillna(0).round(1)
+
+    resumen["porcentaje_brecha"] = (
+        100 * resumen["competencias_no_cubiertas"] / resumen["total_evaluaciones"].replace(0, pd.NA)
+    ).fillna(0).round(1)
+
+    def clasificar_alerta(fila):
+        if fila["porcentaje_brecha"] >= 70 or fila["brechas_altas"] >= 10:
+            return "Alta"
+        if fila["porcentaje_brecha"] >= 40 or fila["brechas_altas"] >= 5:
+            return "Media"
+        return "Baja"
+
+    resumen["nivel_alerta"] = resumen.apply(clasificar_alerta, axis=1)
+
+    resumen["diagnostico"] = resumen.apply(
+        lambda fila: (
+            f"El programa presenta {fila['porcentaje_brecha']}% de brecha frente a las competencias detectadas en el mercado. "
+            f"Se identifican {int(fila['brechas_altas'])} brechas altas."
+        ),
+        axis=1
+    )
+
+    resumen["recomendacion"] = resumen["nivel_alerta"].map({
+        "Alta": "Priorizar revisión curricular, actualización de competencias y rutas complementarias de formación.",
+        "Media": "Revisar electivas, certificaciones y resultados de aprendizaje asociados a competencias no cubiertas.",
+        "Baja": "Mantener seguimiento periódico y actualizar evidencia con nuevas fuentes de mercado."
+    })
+
+    columnas = [
+        "nombre_programa",
+        "competencias_mercado",
+        "competencias_cubiertas",
+        "competencias_no_cubiertas",
+        "porcentaje_cobertura",
+        "porcentaje_brecha",
+        "brechas_altas",
+        "nivel_alerta",
+        "diagnostico",
+        "recomendacion"
+    ]
+
+    return resumen[columnas]
+
+
+def calcular_brechas_por_tipo(datos):
+    if datos.empty or "tipo_competencia" not in datos.columns:
+        return pd.DataFrame()
+
+    resumen_tipo = (
+        datos.groupby(["nombre_programa", "tipo_competencia"])
+        .agg(
+            competencias_mercado=("nombre_competencia", "nunique"),
+            competencias_cubiertas=("estado_brecha", lambda x: (x == "Cubierta").sum()),
+            competencias_no_cubiertas=("estado_brecha", lambda x: (x == "No cubierta").sum()),
+            brechas_altas=("nivel_brecha", lambda x: (x == "Alta").sum()),
+            brechas_medias=("nivel_brecha", lambda x: (x == "Media").sum()),
+            brechas_bajas=("nivel_brecha", lambda x: (x == "Baja").sum())
+        )
+        .reset_index()
+    )
+
+    resumen_tipo["total_evaluaciones"] = (
+        resumen_tipo["competencias_cubiertas"] + resumen_tipo["competencias_no_cubiertas"]
+    )
+
+    resumen_tipo["porcentaje_brecha"] = (
+        100 * resumen_tipo["competencias_no_cubiertas"] / resumen_tipo["total_evaluaciones"].replace(0, pd.NA)
+    ).fillna(0).round(1)
+
+    return resumen_tipo
+
+
+def preparar_top_brechas_no_cubiertas(datos, max_filas=50):
+    if datos.empty:
+        return pd.DataFrame()
+
+    datos_no_cubiertos = datos.copy()
+
+    if "estado_brecha" in datos_no_cubiertos.columns:
+        datos_no_cubiertos = datos_no_cubiertos[
+            datos_no_cubiertos["estado_brecha"].astype(str) == "No cubierta"
+        ]
+
+    if datos_no_cubiertos.empty:
+        return pd.DataFrame()
+
+    columnas_base = [
+        "nombre_programa",
+        "nombre_competencia",
+        "tipo_competencia",
+        "categoria",
+        "nivel_demanda",
+        "nivel_brecha",
+        "fuente",
+        "recomendacion"
+    ]
+
+    columnas_existentes = [col for col in columnas_base if col in datos_no_cubiertos.columns]
+
+    orden_nivel = {
+        "Alta": 1,
+        "Media": 2,
+        "Baja": 3
+    }
+
+    datos_no_cubiertos = datos_no_cubiertos[columnas_existentes].drop_duplicates()
+
+    if "nivel_brecha" in datos_no_cubiertos.columns:
+        datos_no_cubiertos["orden_brecha"] = datos_no_cubiertos["nivel_brecha"].map(orden_nivel).fillna(4)
+        datos_no_cubiertos = datos_no_cubiertos.sort_values(["orden_brecha", "nombre_programa"])
+        datos_no_cubiertos = datos_no_cubiertos.drop(columns=["orden_brecha"])
+
+    return datos_no_cubiertos.head(max_filas)
 
 def mostrar_inicio(resumen, criticas, brecha_completa):
     st.title("Observatorio Laboral UniSabana")
@@ -906,13 +1024,15 @@ def mostrar_inicio(resumen, criticas, brecha_completa):
 
 
 def mostrar_resumen_programas(brecha_completa):
-    st.title("Resumen por programa")
+    st.title("Resumen ejecutivo por programa")
     st.write(
-        "Esta sección resume las brechas por programa académico aplicando filtros "
-        "globales sobre la información extraída de las fuentes cargadas."
+        "Esta sección resume la brecha entre las competencias exigidas por el mercado "
+        "y las competencias registradas en la oferta académica de cada programa."
     )
 
     datos_filtrados = aplicar_filtros_base(brecha_completa, prefijo="resumen")
+
+    st.caption(f"Registros cargados para el análisis: {len(brecha_completa):,}")
 
     resumen = calcular_resumen_filtrado(datos_filtrados)
 
@@ -922,26 +1042,146 @@ def mostrar_resumen_programas(brecha_completa):
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     kpi1.metric("Programas filtrados", resumen["nombre_programa"].nunique())
-    kpi2.metric("Competencias evaluadas", int(resumen["total_competencias_evaluadas"].sum()))
-    kpi3.metric("Brechas altas", int(resumen["brechas_altas"].sum()))
-    kpi4.metric("No cubiertas", int(resumen["competencias_no_cubiertas"].sum()))
+    kpi2.metric("Competencias de mercado", int(resumen["competencias_mercado"].sum()))
+    kpi3.metric("Brecha promedio", f"{resumen['porcentaje_brecha'].mean():.1f}%")
+    kpi4.metric("Programas en alerta alta", int((resumen["nivel_alerta"] == "Alta").sum()))
 
-    st.subheader("Tabla resumen")
-    st.dataframe(resumen, use_container_width=True)
+    st.subheader("Tabla ejecutiva de brecha por programa")
+
+    tabla_resumen = resumen.rename(columns={
+        "nombre_programa": "Programa",
+        "competencias_mercado": "Competencias exigidas por el mercado",
+        "competencias_cubiertas": "Competencias cubiertas",
+        "competencias_no_cubiertas": "Competencias no cubiertas",
+        "porcentaje_cobertura": "% cobertura académica",
+        "porcentaje_brecha": "% brecha",
+        "brechas_altas": "Brechas altas",
+        "nivel_alerta": "Nivel de alerta",
+        "diagnostico": "Diagnóstico",
+        "recomendacion": "Recomendación"
+    })
+
+    st.dataframe(tabla_resumen, use_container_width=True)
 
     fig = px.bar(
         resumen,
         x="nombre_programa",
-        y=["brechas_altas", "brechas_medias", "brechas_bajas"],
-        title="Niveles de brecha por programa",
+        y=["porcentaje_cobertura", "porcentaje_brecha"],
+        title="Cobertura académica vs brecha por programa",
         barmode="group",
         labels={
             "nombre_programa": "Programa académico",
-            "value": "Cantidad de competencias",
-            "variable": "Nivel de brecha"
+            "value": "Porcentaje",
+            "variable": "Indicador"
         }
     )
     st.plotly_chart(fig, use_container_width=True)
+
+
+def mostrar_brechas_por_tipo(brecha_completa):
+    st.title("Brechas por tipo de competencia")
+    st.write(
+        "Esta sección separa la brecha entre competencias técnicas y competencias "
+        "transversales/blandas, tal como lo exige el análisis de pertinencia académica."
+    )
+
+    datos = aplicar_filtros_base(brecha_completa, prefijo="tipo_brecha")
+    resumen_tipo = calcular_brechas_por_tipo(datos)
+
+    if resumen_tipo.empty:
+        st.warning("No hay datos para los filtros seleccionados.")
+        return
+
+    st.subheader("Tabla de brechas por tipo de competencia")
+
+    tabla_tipo = resumen_tipo.rename(columns={
+        "nombre_programa": "Programa",
+        "tipo_competencia": "Tipo de competencia",
+        "competencias_mercado": "Competencias de mercado",
+        "competencias_cubiertas": "Cubiertas",
+        "competencias_no_cubiertas": "No cubiertas",
+        "brechas_altas": "Brechas altas",
+        "brechas_medias": "Brechas medias",
+        "brechas_bajas": "Brechas bajas",
+        "porcentaje_brecha": "% brecha"
+    })
+
+    st.dataframe(tabla_tipo, use_container_width=True)
+
+    fig = px.bar(
+        resumen_tipo,
+        x="nombre_programa",
+        y="porcentaje_brecha",
+        color="tipo_competencia",
+        barmode="group",
+        title="Porcentaje de brecha por tipo de competencia",
+        labels={
+            "nombre_programa": "Programa académico",
+            "porcentaje_brecha": "% brecha",
+            "tipo_competencia": "Tipo de competencia"
+        }
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def mostrar_top_brechas_no_cubiertas(brecha_completa):
+    st.title("Top competencias no cubiertas")
+    st.write(
+        "Esta sección identifica las competencias exigidas por el mercado que no aparecen "
+        "cubiertas en la oferta académica de los programas filtrados."
+    )
+
+    datos = aplicar_filtros_base(brecha_completa, prefijo="top_brechas")
+
+    col1, col2, col3 = st.columns(3)
+
+    tipo_competencia = col1.selectbox(
+        "Tipo de competencia",
+        obtener_opciones_filtro(datos, "tipo_competencia"),
+        key="top_tipo_competencia"
+    )
+
+    nivel_demanda = col2.selectbox(
+        "Nivel de demanda",
+        obtener_opciones_filtro(datos, "nivel_demanda"),
+        key="top_nivel_demanda"
+    )
+
+    nivel_brecha = col3.selectbox(
+        "Nivel de brecha",
+        obtener_opciones_filtro(datos, "nivel_brecha"),
+        key="top_nivel_brecha"
+    )
+
+    filtros = {
+        "tipo_competencia": tipo_competencia,
+        "nivel_demanda": nivel_demanda,
+        "nivel_brecha": nivel_brecha
+    }
+
+    for columna, valor in filtros.items():
+        if valor != "Todos" and columna in datos.columns:
+            datos = datos[datos[columna].astype(str) == valor]
+
+    top_brechas = preparar_top_brechas_no_cubiertas(datos)
+
+    if top_brechas.empty:
+        st.warning("No hay competencias no cubiertas para los filtros seleccionados.")
+        return
+
+    tabla_top = top_brechas.rename(columns={
+        "nombre_programa": "Programa",
+        "nombre_competencia": "Competencia no cubierta",
+        "tipo_competencia": "Tipo",
+        "categoria": "Categoría",
+        "nivel_demanda": "Nivel de demanda",
+        "nivel_brecha": "Nivel de brecha",
+        "fuente": "Fuente",
+        "recomendacion": "Recomendación"
+    })
+
+    st.subheader("Competencias prioritarias no cubiertas")
+    st.dataframe(tabla_top, use_container_width=True)
 def mostrar_competencias_criticas(criticas):
     st.title("Competencias críticas")
     st.write(
@@ -1868,7 +2108,9 @@ try:
             seccion_brechas = st.radio(
                 "Selecciona una sección",
                 [
-                    "Resumen por programa",
+                    "Resumen ejecutivo por programa",
+                    "Brechas por tipo de competencia",
+                    "Top competencias no cubiertas",
                     "Competencias críticas",
                     "Detalle de brecha"
                 ],
@@ -1886,8 +2128,12 @@ try:
     if modulo_principal == "Inicio":
         mostrar_inicio(resumen, criticas, brecha_completa)
     elif modulo_principal == "Brechas oferta-demanda":
-        if seccion_brechas == "Resumen por programa":
+        if seccion_brechas == "Resumen ejecutivo por programa":
             mostrar_resumen_programas(brecha_completa)
+        elif seccion_brechas == "Brechas por tipo de competencia":
+            mostrar_brechas_por_tipo(brecha_completa)
+        elif seccion_brechas == "Top competencias no cubiertas":
+            mostrar_top_brechas_no_cubiertas(brecha_completa)
         elif seccion_brechas == "Competencias críticas":
             mostrar_competencias_criticas(criticas)
         elif seccion_brechas == "Detalle de brecha":
