@@ -68,6 +68,66 @@ DICCIONARIO_VARIABLES = {
         "tipo": "Tendencia laboral",
         "categoria": "Diversidad e inclusión",
         "palabras_clave": ["de&i", "diversidad", "inclusión", "inclusion", "equidad"]
+    },
+    "Analítica de datos": {
+        "tipo": "Competencia técnica",
+        "categoria": "Analítica de datos",
+        "palabras_clave": ["data analytics", "analítica de datos", "analitica de datos", "data analysis", "análisis de datos", "analisis de datos"]
+    },
+    "Inteligencia artificial": {
+        "tipo": "Competencia técnica",
+        "categoria": "Transformación digital",
+        "palabras_clave": ["artificial intelligence", "inteligencia artificial", "machine learning", "ai", "ia", "modelos predictivos"]
+    },
+    "Automatización": {
+        "tipo": "Competencia técnica",
+        "categoria": "Transformación digital",
+        "palabras_clave": ["automation", "automatización", "automatizacion", "robotización", "robotizacion", "rpa"]
+    },
+    "Ciberseguridad": {
+        "tipo": "Competencia técnica",
+        "categoria": "Tecnología y seguridad",
+        "palabras_clave": ["cybersecurity", "ciberseguridad", "seguridad informática", "seguridad informatica", "information security"]
+    },
+    "Programación y desarrollo de software": {
+        "tipo": "Competencia técnica",
+        "categoria": "Desarrollo de software",
+        "palabras_clave": ["software development", "programación", "programacion", "developer", "desarrollador", "python", "java", "javascript"]
+    },
+    "Cloud computing": {
+        "tipo": "Competencia técnica",
+        "categoria": "Infraestructura digital",
+        "palabras_clave": ["cloud", "cloud computing", "aws", "azure", "google cloud", "nube"]
+    },
+    "Business intelligence": {
+        "tipo": "Competencia técnica",
+        "categoria": "Analítica de datos",
+        "palabras_clave": ["business intelligence", "bi", "power bi", "tableau", "dashboards", "visualización de datos", "visualizacion de datos"]
+    },
+    "Gestión de proyectos": {
+        "tipo": "Competencia transversal",
+        "categoria": "Gestión de proyectos",
+        "palabras_clave": ["project management", "gestión de proyectos", "gestion de proyectos", "scrum", "agile", "metodologías ágiles", "metodologias agiles"]
+    },
+    "Innovación y emprendimiento": {
+        "tipo": "Competencia transversal",
+        "categoria": "Innovación",
+        "palabras_clave": ["innovation", "innovación", "innovacion", "entrepreneurship", "emprendimiento", "intraemprendimiento"]
+    },
+    "Finanzas digitales": {
+        "tipo": "Competencia técnica",
+        "categoria": "Finanzas digitales",
+        "palabras_clave": ["fintech", "finanzas digitales", "digital finance", "blockchain", "banca digital"]
+    },
+    "Salud digital": {
+        "tipo": "Competencia técnica",
+        "categoria": "Salud digital",
+        "palabras_clave": ["healthtech", "salud digital", "telemedicina", "digital health", "tecnología médica", "tecnologia medica"]
+    },
+    "Logística y cadena de suministro": {
+        "tipo": "Competencia técnica",
+        "categoria": "Operaciones y logística",
+        "palabras_clave": ["logistics", "logística", "logistica", "supply chain", "cadena de suministro", "operaciones"]
     }
 }
 
@@ -150,6 +210,7 @@ def extraer_texto_pdf_subido(archivo_subido):
     return paginas
 
 
+
 def buscar_variables_en_paginas(nombre_archivo, paginas):
     resultados = []
 
@@ -181,6 +242,63 @@ def buscar_variables_en_paginas(nombre_archivo, paginas):
                 })
 
     return resultados
+
+
+# Nueva función: inferir_sector_desde_texto
+def inferir_sector_desde_texto(texto):
+    texto = str(texto).lower()
+
+    sectores = {
+        "Tecnología": [
+            "technology", "tecnología", "tecnologia", "software", "cloud", "cybersecurity",
+            "ciberseguridad", "data", "inteligencia artificial", "artificial intelligence",
+            "machine learning", "programación", "programacion"
+        ],
+        "Financiero": [
+            "finance", "financial", "finanzas", "banca", "banking", "fintech", "seguros",
+            "insurance", "inversión", "inversion"
+        ],
+        "Salud": [
+            "health", "salud", "hospital", "clínica", "clinica", "medicina", "enfermería",
+            "enfermeria", "telemedicina", "healthtech"
+        ],
+        "Educación": [
+            "education", "educación", "educacion", "universidad", "colegio", "aprendizaje",
+            "formación", "formacion", "training"
+        ],
+        "Manufactura": [
+            "manufacturing", "manufactura", "producción", "produccion", "planta", "industrial",
+            "operaciones", "maintenance", "mantenimiento"
+        ],
+        "Energía": [
+            "energy", "energía", "energia", "oil", "gas", "renovable", "renewable", "electricidad",
+            "minería", "mineria"
+        ],
+        "Construcción": [
+            "construction", "construcción", "construccion", "infraestructura", "civil", "obra",
+            "real estate"
+        ],
+        "Consultoría": [
+            "consulting", "consultoría", "consultoria", "advisory", "asesoría", "asesoria"
+        ],
+        "Comercio y servicios": [
+            "retail", "commerce", "comercio", "servicios", "customer", "cliente", "ventas", "sales"
+        ],
+        "Talento humano": [
+            "human resources", "recursos humanos", "talento", "hiring", "retention", "recruitment",
+            "reclutamiento"
+        ],
+        "Logística": [
+            "logistics", "logística", "logistica", "supply chain", "cadena de suministro", "transporte"
+        ]
+    }
+
+    for sector, palabras in sectores.items():
+        for palabra in palabras:
+            if palabra in texto:
+                return sector
+
+    return "No especificado"
 
 
 def limpiar_valor(valor):
@@ -221,6 +339,182 @@ def obtener_valor_flexible(fila, posibles_columnas):
         if columna_normalizada in fila.index and not pd.isna(fila[columna_normalizada]):
             return fila[columna_normalizada]
     return None
+
+
+# ------------------ FUNCIONES DE CARGA DE EXCELS A SUPABASE ------------------
+def guardar_excel_competencias_mercado(nombre_archivo, df):
+    supabase = conectar_supabase()
+    fuente_pdf_id = obtener_o_crear_fuente_pdf(supabase, nombre_archivo)
+    registros_insertados = 0
+    registros_omitidos = 0
+
+    for _, fila in df.iterrows():
+        nombre_competencia = obtener_valor_flexible(
+            fila,
+            ["nombre_competencia", "competencia", "variable_detectada", "habilidad", "skill"]
+        )
+
+        if pd.isna(nombre_competencia) or not nombre_competencia:
+            registros_omitidos += 1
+            continue
+
+        tipo_competencia = obtener_valor_flexible(
+            fila,
+            ["tipo_competencia", "tipo", "clasificacion"]
+        ) or "No clasificada"
+
+        categoria = obtener_valor_flexible(
+            fila,
+            ["categoria", "area", "grupo"]
+        ) or "No especificada"
+
+        sector = obtener_valor_flexible(
+            fila,
+            ["sector", "industria"]
+        ) or "No especificado"
+
+        cargo_asociado = obtener_valor_flexible(
+            fila,
+            ["cargo_asociado", "cargo", "perfil", "rol"]
+        ) or "No especificado"
+
+        nivel_demanda = obtener_valor_flexible(
+            fila,
+            ["nivel_demanda", "demanda", "prioridad"]
+        ) or "Media"
+
+        evidencia = obtener_valor_flexible(
+            fila,
+            ["evidencia", "descripcion", "detalle", "observacion", "observaciones"]
+        ) or f"Registro cargado desde el Excel {nombre_archivo}."
+
+        if competencia_ya_existe(supabase, fuente_pdf_id, str(nombre_competencia), str(evidencia)):
+            registros_omitidos += 1
+            continue
+
+        supabase.table("competencias_mercado").insert({
+            "fuente_pdf_id": fuente_pdf_id,
+            "nombre_competencia": limpiar_valor(nombre_competencia),
+            "tipo_competencia": transformar_tipo(limpiar_valor(tipo_competencia)),
+            "categoria": limpiar_valor(categoria),
+            "sector": limpiar_valor(sector),
+            "cargo_asociado": limpiar_valor(cargo_asociado),
+            "nivel_demanda": limpiar_valor(nivel_demanda),
+            "evidencia": limpiar_valor(evidencia)
+        }).execute()
+        registros_insertados += 1
+
+    return {
+        "registros_insertados": registros_insertados,
+        "registros_omitidos": registros_omitidos
+    }
+
+
+def guardar_excel_programas_academicos(df):
+    supabase = conectar_supabase()
+    registros_insertados = 0
+    registros_omitidos = 0
+
+    for _, fila in df.iterrows():
+        nombre_programa = obtener_valor_flexible(
+            fila,
+            ["nombre_programa", "programa", "carrera"]
+        )
+
+        if pd.isna(nombre_programa) or not nombre_programa:
+            registros_omitidos += 1
+            continue
+
+        respuesta = (
+            supabase.table("programas_academicos")
+            .select("id")
+            .eq("nombre_programa", str(nombre_programa))
+            .execute()
+        )
+
+        if respuesta.data:
+            registros_omitidos += 1
+            continue
+
+        supabase.table("programas_academicos").insert({
+            "nombre_programa": limpiar_valor(nombre_programa),
+            "facultad": limpiar_valor(obtener_valor_flexible(fila, ["facultad", "escuela"])),
+            "nivel_formacion": limpiar_valor(obtener_valor_flexible(fila, ["nivel_formacion", "nivel"])),
+            "descripcion": limpiar_valor(obtener_valor_flexible(fila, ["descripcion", "detalle", "observacion"]))
+        }).execute()
+        registros_insertados += 1
+
+    return {
+        "registros_insertados": registros_insertados,
+        "registros_omitidos": registros_omitidos
+    }
+
+
+def obtener_id_programa_por_nombre(supabase, nombre_programa):
+    respuesta = (
+        supabase.table("programas_academicos")
+        .select("id")
+        .eq("nombre_programa", str(nombre_programa))
+        .execute()
+    )
+
+    if respuesta.data:
+        return respuesta.data[0]["id"]
+
+    return None
+
+
+def guardar_excel_competencias_programa(df):
+    supabase = conectar_supabase()
+    registros_insertados = 0
+    registros_omitidos = 0
+
+    for _, fila in df.iterrows():
+        nombre_programa = obtener_valor_flexible(
+            fila,
+            ["nombre_programa", "programa", "carrera"]
+        )
+        nombre_competencia = obtener_valor_flexible(
+            fila,
+            ["nombre_competencia", "competencia", "habilidad", "skill"]
+        )
+
+        if pd.isna(nombre_programa) or pd.isna(nombre_competencia) or not nombre_programa or not nombre_competencia:
+            registros_omitidos += 1
+            continue
+
+        programa_id = obtener_id_programa_por_nombre(supabase, nombre_programa)
+
+        if not programa_id:
+            registros_omitidos += 1
+            continue
+
+        respuesta = (
+            supabase.table("competencias_programa")
+            .select("id")
+            .eq("programa_id", programa_id)
+            .eq("nombre_competencia", str(nombre_competencia))
+            .execute()
+        )
+
+        if respuesta.data:
+            registros_omitidos += 1
+            continue
+
+        supabase.table("competencias_programa").insert({
+            "programa_id": programa_id,
+            "nombre_competencia": limpiar_valor(nombre_competencia),
+            "tipo_competencia": limpiar_valor(obtener_valor_flexible(fila, ["tipo_competencia", "tipo"])),
+            "categoria": limpiar_valor(obtener_valor_flexible(fila, ["categoria", "area", "grupo"])),
+            "nivel_formacion": limpiar_valor(obtener_valor_flexible(fila, ["nivel_formacion", "nivel"])),
+            "evidencia_curricular": limpiar_valor(obtener_valor_flexible(fila, ["evidencia_curricular", "evidencia", "descripcion", "detalle"]))
+        }).execute()
+        registros_insertados += 1
+
+    return {
+        "registros_insertados": registros_insertados,
+        "registros_omitidos": registros_omitidos
+    }
 
 def transformar_tipo(tipo_original):
     if not tipo_original:
@@ -352,7 +646,7 @@ def guardar_resultados_pdf_en_supabase(resultados):
                 "nombre_competencia": limpiar_valor(variable_detectada),
                 "tipo_competencia": transformar_tipo(resultado.get("tipo")),
                 "categoria": limpiar_valor(resultado.get("categoria")),
-                "sector": "No especificado",
+                "sector": inferir_sector_desde_texto(evidencia),
                 "cargo_asociado": "No especificado",
                 "nivel_demanda": estimar_nivel_demanda(resultado.get("porcentajes_en_pagina")),
                 "evidencia": limpiar_valor(evidencia)
@@ -364,6 +658,11 @@ def guardar_resultados_pdf_en_supabase(resultados):
         "competencias_insertadas": competencias_insertadas,
         "registros_omitidos": registros_omitidos
     }
+
+
+def recalcular_modulos_analiticos():
+    supabase = conectar_supabase()
+    return supabase.rpc("recalcular_modulos_analiticos").execute()
 
 
 def mostrar_kpis(resumen, criticas, brecha_completa):
@@ -448,13 +747,12 @@ def calcular_resumen_filtrado(datos):
 
 def mostrar_inicio(resumen, criticas, brecha_completa):
     st.title("Observatorio Laboral UniSabana")
-    st.subheader("Monitoreo de brecha oferta-demanda")
+    st.subheader("Monitoreo estratégico del mercado laboral")
 
     st.write(
-        "Esta plataforma analiza la alineación entre las competencias demandadas "
-        "por el mercado laboral y las competencias desarrolladas por los programas "
-        "académicos. El objetivo es generar evidencia para orientar decisiones sobre "
-        "oferta académica, fortalecimiento curricular y empleabilidad."
+        "Esta plataforma integra fuentes del mercado laboral en PDF y Excel para apoyar "
+        "la toma de decisiones sobre pertinencia académica, empleabilidad, actualización "
+        "curricular y relación con el sector productivo."
     )
 
     st.success("Conexión exitosa con Supabase.")
@@ -462,12 +760,55 @@ def mostrar_inicio(resumen, criticas, brecha_completa):
 
     st.divider()
 
+    st.markdown("### Módulos principales del observatorio")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**1. Brechas oferta-demanda**")
+        st.write(
+            "Compara competencias demandadas por el mercado frente a competencias "
+            "registradas en los programas académicos."
+        )
+
+        st.markdown("**2. Programas en riesgo**")
+        st.write(
+            "Identifica programas con señales de riesgo por demanda decreciente, baja "
+            "cobertura, brechas altas o transformación acelerada del perfil profesional."
+        )
+
+        st.markdown("**3. Nuevas oportunidades**")
+        st.write(
+            "Resume tendencias de empleo, competencias asociadas y rangos salariales "
+            "detectados en las fuentes cargadas."
+        )
+
+    with col2:
+        st.markdown("**4. Competencias emergentes**")
+        st.write(
+            "Mapea competencias técnicas y transversales con mayor proyección para el "
+            "mercado laboral."
+        )
+
+        st.markdown("**5. Sectores con mayor crecimiento**")
+        st.write(
+            "Identifica sectores con señales de expansión para orientar empleabilidad, "
+            "orientación profesional y alianzas estratégicas."
+        )
+
+        st.markdown("**Administrador de fuentes**")
+        st.write(
+            "Permite cargar PDFs y Excels para alimentar automáticamente la base de datos "
+            "y recalcular los módulos analíticos."
+        )
+
+    st.divider()
+
     st.markdown("### Lectura ejecutiva")
     st.write(
-        "El sistema permite identificar competencias cubiertas, parcialmente cubiertas "
-        "y no cubiertas por programa académico. Para el MVP se prioriza la dimensión "
-        "de brecha oferta-demanda, porque permite construir un diagnóstico inicial sin "
-        "depender todavía de series históricas."
+        "El observatorio transforma información dispersa en indicadores comparables. "
+        "Cada módulo usa tablas propias en Supabase y se actualiza a partir de las fuentes "
+        "procesadas desde el Administrador de fuentes."
     )
 
 
@@ -655,9 +996,9 @@ def mostrar_brecha_detallada(brecha_completa):
 def mostrar_programas_en_riesgo(programas_riesgo):
     st.title("Programas en riesgo")
     st.write(
-        "Este módulo identifica programas con señales de riesgo por baja cobertura "
-        "frente al mercado, concentración de brechas altas y transformación acelerada "
-        "del perfil profesional."
+        "Este módulo identifica programas con señales de riesgo por demanda decreciente, "
+        "baja cobertura frente al mercado, concentración de brechas altas y transformación "
+        "acelerada del perfil profesional."
     )
 
     datos = programas_riesgo.copy()
@@ -678,18 +1019,31 @@ def mostrar_programas_en_riesgo(programas_riesgo):
         key="riesgo_cobertura"
     )
 
-    nivel_riesgo = col3.selectbox(
+    fuente = col3.selectbox(
+        "Fuente",
+        obtener_opciones_filtro(datos, "fuente"),
+        key="riesgo_fuente"
+    )
+
+    col4, col5, col6 = st.columns(3)
+
+    tendencia_demanda = col4.selectbox(
+        "Tendencia de demanda",
+        obtener_opciones_filtro(datos, "tendencia_demanda"),
+        key="riesgo_tendencia_demanda"
+    )
+
+    nivel_riesgo = col5.selectbox(
         "Nivel de riesgo",
         obtener_opciones_filtro(datos, "nivel_riesgo"),
         key="riesgo_nivel"
     )
 
-    col4, col5 = st.columns(2)
-
-    tipo_senal = col4.selectbox(
+    tipo_senal = col6.selectbox(
         "Tipo de señal de riesgo",
         [
             "Todas",
+            "Demanda decreciente",
             "Baja cobertura frente al mercado",
             "Concentración de brechas altas",
             "Transformación acelerada del perfil"
@@ -697,10 +1051,11 @@ def mostrar_programas_en_riesgo(programas_riesgo):
         key="riesgo_senal"
     )
 
-    orden = col5.selectbox(
+    orden = st.selectbox(
         "Ordenar por",
         [
             "Mayor riesgo",
+            "Demanda decreciente primero",
             "Mayor no cobertura",
             "Mayor transformación del perfil",
             "Mayor brecha alta"
@@ -708,23 +1063,32 @@ def mostrar_programas_en_riesgo(programas_riesgo):
         key="riesgo_orden"
     )
 
-    if programa != "Todos":
+    if programa != "Todos" and "nombre_programa" in datos.columns:
         datos = datos[datos["nombre_programa"].astype(str) == programa]
 
     if cobertura != "Todos" and "cobertura_geografica" in datos.columns:
         datos = datos[datos["cobertura_geografica"].astype(str) == cobertura]
 
-    if nivel_riesgo != "Todos":
+    if fuente != "Todos" and "fuente" in datos.columns:
+        datos = datos[datos["fuente"].astype(str) == fuente]
+
+    if tendencia_demanda != "Todos" and "tendencia_demanda" in datos.columns:
+        datos = datos[datos["tendencia_demanda"].astype(str) == tendencia_demanda]
+
+    if nivel_riesgo != "Todos" and "nivel_riesgo" in datos.columns:
         datos = datos[datos["nivel_riesgo"].astype(str) == nivel_riesgo]
 
-    if tipo_senal == "Baja cobertura frente al mercado":
-        datos = datos[datos["porcentaje_no_cobertura"] >= 35]
+    if tipo_senal == "Demanda decreciente" and "tendencia_demanda" in datos.columns:
+        datos = datos[datos["tendencia_demanda"].astype(str) == "Demanda decreciente"]
 
-    elif tipo_senal == "Concentración de brechas altas":
-        datos = datos[datos["porcentaje_brecha_alta"] >= 25]
+    elif tipo_senal == "Baja cobertura frente al mercado" and "tipo_riesgo_principal" in datos.columns:
+        datos = datos[datos["tipo_riesgo_principal"].astype(str) == "Baja cobertura frente al mercado"]
 
-    elif tipo_senal == "Transformación acelerada del perfil":
-        datos = datos[datos["porcentaje_transformacion_perfil"] >= 40]
+    elif tipo_senal == "Concentración de brechas altas" and "tipo_riesgo_principal" in datos.columns:
+        datos = datos[datos["tipo_riesgo_principal"].astype(str) == "Concentración de brechas altas"]
+
+    elif tipo_senal == "Transformación acelerada del perfil" and "tipo_riesgo_principal" in datos.columns:
+        datos = datos[datos["tipo_riesgo_principal"].astype(str) == "Transformación acelerada del perfil"]
 
     if datos.empty:
         st.warning("No hay programas en riesgo para los filtros seleccionados.")
@@ -736,22 +1100,22 @@ def mostrar_programas_en_riesgo(programas_riesgo):
 
     col1.metric(
         "Programas evaluados",
-        datos["nombre_programa"].nunique()
+        datos["nombre_programa"].nunique() if "nombre_programa" in datos.columns else 0
     )
 
     col2.metric(
         "Riesgo alto",
-        int((datos["nivel_riesgo"] == "Alto").sum())
+        int((datos["nivel_riesgo"] == "Alto").sum()) if "nivel_riesgo" in datos.columns else 0
     )
 
     col3.metric(
-        "Promedio no cobertura",
-        f"{datos['porcentaje_no_cobertura'].mean():.1f}%"
+        "Demanda decreciente",
+        int((datos["tendencia_demanda"] == "Demanda decreciente").sum()) if "tendencia_demanda" in datos.columns else 0
     )
 
     col4.metric(
-        "Promedio transformación",
-        f"{datos['porcentaje_transformacion_perfil'].mean():.1f}%"
+        "Transformación promedio",
+        f"{datos['porcentaje_transformacion_perfil'].mean():.1f}%" if "porcentaje_transformacion_perfil" in datos.columns else "0.0%"
     )
 
     orden_riesgo = {
@@ -760,88 +1124,114 @@ def mostrar_programas_en_riesgo(programas_riesgo):
         "Bajo": 3
     }
 
+    orden_tendencia = {
+        "Demanda decreciente": 1,
+        "Demanda estable": 2,
+        "Demanda creciente": 3,
+        "Sin histórico suficiente": 4,
+        "Pendiente de histórico": 5
+    }
+
     datos_ordenados = datos.copy()
-    datos_ordenados["orden_riesgo"] = datos_ordenados["nivel_riesgo"].map(orden_riesgo).fillna(4)
+
+    if "nivel_riesgo" in datos_ordenados.columns:
+        datos_ordenados["orden_riesgo"] = datos_ordenados["nivel_riesgo"].map(orden_riesgo).fillna(4)
+    else:
+        datos_ordenados["orden_riesgo"] = 4
+
+    if "tendencia_demanda" in datos_ordenados.columns:
+        datos_ordenados["orden_tendencia"] = datos_ordenados["tendencia_demanda"].map(orden_tendencia).fillna(6)
+    else:
+        datos_ordenados["orden_tendencia"] = 6
 
     if orden == "Mayor riesgo":
+        columnas_orden = ["orden_riesgo"]
+        ascendentes = [True]
+
+        if "porcentaje_no_cobertura" in datos_ordenados.columns:
+            columnas_orden.append("porcentaje_no_cobertura")
+            ascendentes.append(False)
+
+        datos_ordenados = datos_ordenados.sort_values(columnas_orden, ascending=ascendentes)
+
+    elif orden == "Demanda decreciente primero":
         datos_ordenados = datos_ordenados.sort_values(
-            ["orden_riesgo", "porcentaje_no_cobertura"],
-            ascending=[True, False]
+            ["orden_tendencia", "orden_riesgo"],
+            ascending=[True, True]
         )
 
-    elif orden == "Mayor no cobertura":
-        datos_ordenados = datos_ordenados.sort_values(
-            "porcentaje_no_cobertura",
-            ascending=False
-        )
+    elif orden == "Mayor no cobertura" and "porcentaje_no_cobertura" in datos_ordenados.columns:
+        datos_ordenados = datos_ordenados.sort_values("porcentaje_no_cobertura", ascending=False)
 
-    elif orden == "Mayor transformación del perfil":
-        datos_ordenados = datos_ordenados.sort_values(
-            "porcentaje_transformacion_perfil",
-            ascending=False
-        )
+    elif orden == "Mayor transformación del perfil" and "porcentaje_transformacion_perfil" in datos_ordenados.columns:
+        datos_ordenados = datos_ordenados.sort_values("porcentaje_transformacion_perfil", ascending=False)
 
-    elif orden == "Mayor brecha alta":
-        datos_ordenados = datos_ordenados.sort_values(
-            "porcentaje_brecha_alta",
-            ascending=False
-        )
+    elif orden == "Mayor brecha alta" and "porcentaje_brecha_alta" in datos_ordenados.columns:
+        datos_ordenados = datos_ordenados.sort_values("porcentaje_brecha_alta", ascending=False)
 
     st.divider()
 
     col_graf1, col_graf2 = st.columns(2)
 
-    conteo_riesgo = datos_ordenados["nivel_riesgo"].value_counts().reset_index()
-    conteo_riesgo.columns = ["nivel_riesgo", "cantidad"]
+    if "nivel_riesgo" in datos_ordenados.columns:
+        conteo_riesgo = datos_ordenados["nivel_riesgo"].value_counts().reset_index()
+        conteo_riesgo.columns = ["nivel_riesgo", "cantidad"]
 
-    fig_riesgo = px.bar(
-        conteo_riesgo,
-        x="nivel_riesgo",
-        y="cantidad",
-        title="Distribución de programas por nivel de riesgo",
-        labels={
-            "nivel_riesgo": "Nivel de riesgo",
-            "cantidad": "Cantidad"
-        }
-    )
-    col_graf1.plotly_chart(fig_riesgo, use_container_width=True)
+        fig_riesgo = px.bar(
+            conteo_riesgo,
+            x="nivel_riesgo",
+            y="cantidad",
+            title="Distribución de programas por nivel de riesgo",
+            labels={
+                "nivel_riesgo": "Nivel de riesgo",
+                "cantidad": "Cantidad"
+            }
+        )
+        col_graf1.plotly_chart(fig_riesgo, use_container_width=True)
 
-    fig_transformacion = px.scatter(
-        datos_ordenados,
-        x="porcentaje_no_cobertura",
-        y="porcentaje_transformacion_perfil",
-        size="total_competencias_evaluadas",
-        hover_name="nombre_programa",
-        title="Riesgo por no cobertura y transformación del perfil",
-        labels={
-            "porcentaje_no_cobertura": "% no cobertura",
-            "porcentaje_transformacion_perfil": "% transformación del perfil",
-            "total_competencias_evaluadas": "Competencias evaluadas"
-        }
-    )
-    col_graf2.plotly_chart(fig_transformacion, use_container_width=True)
+    if "tendencia_demanda" in datos_ordenados.columns:
+        conteo_tendencia = datos_ordenados["tendencia_demanda"].value_counts().reset_index()
+        conteo_tendencia.columns = ["tendencia_demanda", "cantidad"]
+
+        fig_tendencia = px.bar(
+            conteo_tendencia,
+            x="tendencia_demanda",
+            y="cantidad",
+            title="Distribución por tendencia de demanda",
+            labels={
+                "tendencia_demanda": "Tendencia de demanda",
+                "cantidad": "Cantidad"
+            }
+        )
+        col_graf2.plotly_chart(fig_tendencia, use_container_width=True)
 
     columnas = [
         "nombre_programa",
-        "facultad",
         "cobertura_geografica",
-        "total_competencias_evaluadas",
-        "competencias_no_cubiertas",
-        "brechas_altas",
-        "brechas_medias",
-        "senales_transformacion_perfil",
-        "porcentaje_no_cobertura",
-        "porcentaje_brecha_alta",
-        "porcentaje_transformacion_perfil",
+        "tendencia_demanda",
         "nivel_riesgo",
+        "tipo_riesgo_principal",
         "diagnostico_riesgo",
-        "recomendacion"
+        "recomendacion",
+        "fuente"
     ]
 
     columnas_existentes = [col for col in columnas if col in datos_ordenados.columns]
 
-    st.subheader("Tabla de programas en riesgo")
-    st.dataframe(datos_ordenados[columnas_existentes], use_container_width=True)
+    st.subheader("Tabla ejecutiva de programas en riesgo")
+
+    tabla_riesgo = datos_ordenados[columnas_existentes].rename(columns={
+        "nombre_programa": "Programa",
+        "cobertura_geografica": "Cobertura",
+        "tendencia_demanda": "Tendencia de demanda",
+        "nivel_riesgo": "Nivel de riesgo",
+        "tipo_riesgo_principal": "Tipo de riesgo principal",
+        "diagnostico_riesgo": "Diagnóstico",
+        "recomendacion": "Recomendación",
+        "fuente": "Fuente"
+    })
+
+    st.dataframe(tabla_riesgo, use_container_width=True)
 
 def mostrar_nuevas_oportunidades(nuevas_oportunidades):
     st.title("Nuevas oportunidades")
@@ -1188,9 +1578,12 @@ def mostrar_administrador_fuentes():
             with st.spinner("Guardando resultados en Supabase..."):
                 resumen_carga = guardar_resultados_pdf_en_supabase(todos_resultados)
 
+            with st.spinner("Recalculando módulos analíticos..."):
+                recalcular_modulos_analiticos()
+
             st.cache_data.clear()
 
-            st.success("Procesamiento terminado. El observatorio ya usa la información cargada.")
+            st.success("Procesamiento terminado. Los módulos del observatorio fueron actualizados.")
 
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Variables detectadas", len(df_resultados))
@@ -1245,10 +1638,24 @@ def mostrar_administrador_fuentes():
         st.dataframe(df_excel.head(50), use_container_width=True)
 
         if st.button("Cargar Excel a Supabase", type="primary"):
-            st.warning(
-                "Ya podemos leer y previsualizar Excels. "
-                "El siguiente paso es conectar esta carga a las tablas específicas de Supabase."
-            )
+            with st.spinner("Cargando Excel en Supabase..."):
+                if tipo_excel == "Competencias de mercado":
+                    resultado = guardar_excel_competencias_mercado(archivo_excel.name, df_excel)
+                elif tipo_excel == "Programas académicos":
+                    resultado = guardar_excel_programas_academicos(df_excel)
+                else:
+                    resultado = guardar_excel_competencias_programa(df_excel)
+
+            with st.spinner("Recalculando módulos analíticos..."):
+                recalcular_modulos_analiticos()
+
+            st.cache_data.clear()
+
+            st.success("Excel cargado correctamente. Los módulos del observatorio fueron actualizados.")
+
+            col1, col2 = st.columns(2)
+            col1.metric("Registros insertados", resultado["registros_insertados"])
+            col2.metric("Registros omitidos", resultado["registros_omitidos"])
 
 try:
     resumen = cargar_resumen_brechas()
@@ -1291,7 +1698,7 @@ try:
 
     st.sidebar.divider()
     st.sidebar.caption("Fuente: Supabase PostgreSQL")
-    st.sidebar.caption("MVP: Brecha oferta-demanda")
+    st.sidebar.caption("MVP: Observatorio laboral con 5 módulos analíticos")
 
     if modulo_principal == "Inicio":
         mostrar_inicio(resumen, criticas, brecha_completa)
