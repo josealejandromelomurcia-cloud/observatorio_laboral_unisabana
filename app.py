@@ -112,6 +112,12 @@ def cargar_nuevas_oportunidades():
     return pd.DataFrame(respuesta.data)
 
 @st.cache_data(ttl=600)
+def cargar_competencias_emergentes():
+    supabase = conectar_supabase()
+    respuesta = supabase.table("competencias_emergentes").select("*").execute()
+    return pd.DataFrame(respuesta.data)
+
+@st.cache_data(ttl=600)
 def cargar_brechas_automaticas():
     supabase = conectar_supabase()
     respuesta = supabase.table("vista_comparacion_automatica_brechas").select("*").execute()
@@ -915,6 +921,113 @@ def mostrar_nuevas_oportunidades(nuevas_oportunidades):
     st.subheader("Tabla ejecutiva de nuevas oportunidades")
     st.dataframe(tabla_oportunidades, use_container_width=True)
 
+
+def mostrar_competencias_emergentes(competencias_emergentes):
+    st.title("Competencias emergentes")
+    st.write(
+        "Este módulo mapea competencias técnicas y transversales/blandas con mayor "
+        "proyección para el mercado laboral, a partir de las fuentes cargadas en el observatorio."
+    )
+
+    datos = competencias_emergentes.copy()
+
+    st.markdown("### Filtros del módulo")
+
+    col1, col2, col3 = st.columns(3)
+
+    programa = col1.selectbox(
+        "Programa académico",
+        obtener_opciones_filtro(datos, "nombre_programa"),
+        key="emergentes_programa"
+    )
+
+    cobertura = col2.selectbox(
+        "Cobertura geográfica",
+        obtener_opciones_filtro(datos, "cobertura_geografica"),
+        key="emergentes_cobertura"
+    )
+
+    fuente = col3.selectbox(
+        "Fuente",
+        obtener_opciones_filtro(datos, "fuente"),
+        key="emergentes_fuente"
+    )
+
+    col4, col5 = st.columns(2)
+
+    tipo_competencia = col4.selectbox(
+        "Tipo de competencia",
+        obtener_opciones_filtro(datos, "tipo_competencia"),
+        key="emergentes_tipo"
+    )
+
+    nivel_proyeccion = col5.selectbox(
+        "Nivel de proyección",
+        obtener_opciones_filtro(datos, "nivel_proyeccion"),
+        key="emergentes_proyeccion"
+    )
+
+    if programa != "Todos" and "nombre_programa" in datos.columns:
+        datos = datos[datos["nombre_programa"].astype(str) == programa]
+
+    if cobertura != "Todos" and "cobertura_geografica" in datos.columns:
+        datos = datos[datos["cobertura_geografica"].astype(str) == cobertura]
+
+    if fuente != "Todos" and "fuente" in datos.columns:
+        datos = datos[datos["fuente"].astype(str) == fuente]
+
+    if tipo_competencia != "Todos" and "tipo_competencia" in datos.columns:
+        datos = datos[datos["tipo_competencia"].astype(str) == tipo_competencia]
+
+    if nivel_proyeccion != "Todos" and "nivel_proyeccion" in datos.columns:
+        datos = datos[datos["nivel_proyeccion"].astype(str) == nivel_proyeccion]
+
+    if datos.empty:
+        st.warning("No hay competencias emergentes para los filtros seleccionados.")
+        return
+
+    st.divider()
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Competencias emergentes", datos["competencia"].nunique())
+    col2.metric("Técnicas", int((datos["tipo_competencia"] == "Técnica").sum()) if "tipo_competencia" in datos.columns else 0)
+    col3.metric("Transversales", int((datos["tipo_competencia"] == "Transversal").sum()) if "tipo_competencia" in datos.columns else 0)
+
+    st.divider()
+
+    conteo_tipo = datos["tipo_competencia"].value_counts().reset_index()
+    conteo_tipo.columns = ["tipo_competencia", "cantidad"]
+
+    fig_tipo = px.bar(
+        conteo_tipo,
+        x="tipo_competencia",
+        y="cantidad",
+        title="Competencias emergentes por tipo",
+        labels={
+            "tipo_competencia": "Tipo de competencia",
+            "cantidad": "Cantidad"
+        }
+    )
+    st.plotly_chart(fig_tipo, use_container_width=True)
+
+    columnas = [
+        "competencia",
+        "tipo_competencia",
+        "nivel_proyeccion"
+    ]
+
+    columnas_existentes = [col for col in columnas if col in datos.columns]
+
+    tabla_emergentes = datos[columnas_existentes].rename(columns={
+        "competencia": "Competencia",
+        "tipo_competencia": "Tipo de competencia",
+        "nivel_proyeccion": "Nivel de proyección"
+    })
+
+    st.subheader("Tabla ejecutiva de competencias emergentes")
+    st.dataframe(tabla_emergentes, use_container_width=True)
+
 def mostrar_administrador_fuentes():
     st.title("Administrador de fuentes")
     st.write(
@@ -1029,6 +1142,7 @@ try:
     brecha_completa = cargar_brecha_completa()
     programas_riesgo = cargar_programas_en_riesgo()
     nuevas_oportunidades = cargar_nuevas_oportunidades()
+    competencias_emergentes = cargar_competencias_emergentes()
 
     st.sidebar.title("Observatorio Laboral")
     st.sidebar.write("Alumni UniSabana - IN-DES Challenge")
@@ -1040,6 +1154,7 @@ try:
             "Brechas oferta-demanda",
             "Programas en riesgo",
             "Nuevas oportunidades",
+            "Competencias emergentes",
             "Administrador de fuentes"
         ]
     )
@@ -1069,10 +1184,14 @@ try:
             mostrar_resumen_programas(brecha_completa)
         elif seccion_brechas == "Competencias críticas":
             mostrar_competencias_criticas(criticas)
+        elif seccion_brechas == "Detalle de brecha":
+            mostrar_brecha_detallada(brecha_completa)
     elif modulo_principal == "Programas en riesgo":
         mostrar_programas_en_riesgo(programas_riesgo)
     elif modulo_principal == "Nuevas oportunidades":
         mostrar_nuevas_oportunidades(nuevas_oportunidades)
+    elif modulo_principal == "Competencias emergentes":
+        mostrar_competencias_emergentes(competencias_emergentes)
     elif modulo_principal == "Administrador de fuentes":
         mostrar_administrador_fuentes()
 
