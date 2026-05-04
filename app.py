@@ -607,12 +607,38 @@ def competencia_ya_existe(supabase, fuente_pdf_id, nombre_competencia, evidencia
 
     return len(respuesta.data) > 0
 
+def dividir_en_lotes(lista, tamano_lote=100):
+    for inicio in range(0, len(lista), tamano_lote):
+        yield lista[inicio:inicio + tamano_lote]
 
 def guardar_resultados_pdf_en_supabase(resultados):
     supabase = conectar_supabase()
     variables_insertadas = 0
     competencias_insertadas = 0
     registros_omitidos = 0
+
+    if not resultados:
+        return {
+            "variables_insertadas": 0,
+            "competencias_insertadas": 0,
+            "registros_omitidos": 0
+        }
+
+    fuentes_por_archivo = {}
+    archivos_unicos = sorted({
+        resultado.get("archivo")
+        for resultado in resultados
+        if resultado.get("archivo")
+    })
+
+    for archivo in archivos_unicos:
+        fuentes_por_archivo[archivo] = obtener_o_crear_fuente_pdf(supabase, archivo)
+
+    variables_nuevas = []
+    competencias_nuevas = []
+
+    claves_variables_en_lote = set()
+    claves_competencias_en_lote = set()
 
     for resultado in resultados:
         archivo = resultado.get("archivo")
@@ -624,8 +650,14 @@ def guardar_resultados_pdf_en_supabase(resultados):
             registros_omitidos += 1
             continue
 
-        if not variable_ya_existe(supabase, archivo, pagina, variable_detectada):
-            supabase.table("variables_extraidas_pdf").insert({
+        clave_variable = (
+            str(archivo),
+            int(pagina),
+            str(variable_detectada)
+        )
+
+        if clave_variable not in claves_variables_en_lote:
+            variables_nuevas.append({
                 "archivo": limpiar_valor(resultado.get("archivo")),
                 "pagina": int(resultado.get("pagina")),
                 "variable_detectada": limpiar_valor(resultado.get("variable_detectada")),
@@ -634,15 +666,21 @@ def guardar_resultados_pdf_en_supabase(resultados):
                 "palabras_clave_encontradas": limpiar_valor(resultado.get("palabras_clave_encontradas")),
                 "porcentajes_en_pagina": limpiar_valor(resultado.get("porcentajes_en_pagina")),
                 "evidencia": limpiar_valor(resultado.get("evidencia"))
-            }).execute()
-            variables_insertadas += 1
+            })
+            claves_variables_en_lote.add(clave_variable)
         else:
             registros_omitidos += 1
 
-        fuente_pdf_id = obtener_o_crear_fuente_pdf(supabase, archivo)
+        fuente_pdf_id = fuentes_por_archivo.get(archivo)
 
-        if not competencia_ya_existe(supabase, fuente_pdf_id, variable_detectada, evidencia):
-            supabase.table("competencias_mercado").insert({
+        clave_competencia = (
+            fuente_pdf_id,
+            str(variable_detectada),
+            str(evidencia)
+        )
+
+        if fuente_pdf_id and clave_competencia not in claves_competencias_en_lote:
+            competencias_nuevas.append({
                 "fuente_pdf_id": fuente_pdf_id,
                 "nombre_competencia": limpiar_valor(variable_detectada),
                 "tipo_competencia": transformar_tipo(resultado.get("tipo")),
@@ -651,15 +689,44 @@ def guardar_resultados_pdf_en_supabase(resultados):
                 "cargo_asociado": "No especificado",
                 "nivel_demanda": estimar_nivel_demanda(resultado.get("porcentajes_en_pagina")),
                 "evidencia": limpiar_valor(evidencia)
-            }).execute()
-            competencias_insertadas += 1
+            })
+            claves_competencias_en_lote.add(clave_competencia)
+        else:
+            registros_omitidos += 1
+
+    if variables_nuevas:
+        for lote_variables in dividir_en_lotes(variables_nuevas, tamano_lote=100):
+            respuesta_variables = (
+                supabase.table("variables_extraidas_pdf")
+                .upsert(
+                    lote_variables,
+                    on_conflict="archivo,pagina,variable_detectada",
+                    ignore_duplicates=True
+                )
+                .execute()
+            )
+
+            variables_insertadas += len(respuesta_variables.data or [])
+
+    if competencias_nuevas:
+        for lote_competencias in dividir_en_lotes(competencias_nuevas, tamano_lote=100):
+            respuesta_competencias = (
+                supabase.table("competencias_mercado")
+                .upsert(
+                    lote_competencias,
+                    on_conflict="fuente_pdf_id,nombre_competencia,evidencia",
+                    ignore_duplicates=True
+                )
+                .execute()
+            )
+
+            competencias_insertadas += len(respuesta_competencias.data or [])
 
     return {
         "variables_insertadas": variables_insertadas,
         "competencias_insertadas": competencias_insertadas,
         "registros_omitidos": registros_omitidos
     }
-
 
 def recalcular_modulos_analiticos():
     supabase = conectar_supabase()
