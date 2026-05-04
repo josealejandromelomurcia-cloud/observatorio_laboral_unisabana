@@ -99,6 +99,17 @@ def cargar_brecha_completa():
     respuesta = supabase.table("vista_brecha_oferta_demanda_pdf").select("*").execute()
     return pd.DataFrame(respuesta.data)
 
+@st.cache_data(ttl=600)
+def cargar_programas_en_riesgo():
+    supabase = conectar_supabase()
+    respuesta = supabase.table("programas_en_riesgo").select("*").execute()
+    return pd.DataFrame(respuesta.data)
+
+@st.cache_data(ttl=600)
+def cargar_nuevas_oportunidades():
+    supabase = conectar_supabase()
+    respuesta = supabase.table("nuevas_oportunidades").select("*").execute()
+    return pd.DataFrame(respuesta.data)
 
 @st.cache_data(ttl=600)
 def cargar_brechas_automaticas():
@@ -355,6 +366,73 @@ def mostrar_kpis(resumen, criticas, brecha_completa):
     col3.metric("Brechas altas", int(total_brechas_altas))
     col4.metric("Competencias no cubiertas", int(total_no_cubiertas))
 
+def obtener_opciones_filtro(df, columna):
+    if columna not in df.columns:
+        return ["Todos"]
+
+    valores = df[columna].dropna().astype(str).unique().tolist()
+    valores = sorted(valores)
+
+    return ["Todos"] + valores
+
+
+def aplicar_filtros_base(df, prefijo=""):
+    datos = df.copy()
+
+    st.markdown("### Filtros principales")
+
+    col1, col2, col3 = st.columns(3)
+
+    programa = col1.selectbox(
+        "Programa académico",
+        obtener_opciones_filtro(datos, "nombre_programa"),
+        key=f"{prefijo}_programa"
+    )
+
+    cobertura = col2.selectbox(
+        "Cobertura geográfica",
+        obtener_opciones_filtro(datos, "cobertura_geografica"),
+        key=f"{prefijo}_cobertura"
+    )
+
+    fuente = col3.selectbox(
+        "Fuente",
+        obtener_opciones_filtro(datos, "fuente"),
+        key=f"{prefijo}_fuente"
+    )
+
+    if programa != "Todos" and "nombre_programa" in datos.columns:
+        datos = datos[datos["nombre_programa"].astype(str) == programa]
+
+    if cobertura != "Todos" and "cobertura_geografica" in datos.columns:
+        datos = datos[datos["cobertura_geografica"].astype(str) == cobertura]
+
+    if fuente != "Todos" and "fuente" in datos.columns:
+        datos = datos[datos["fuente"].astype(str) == fuente]
+
+    st.divider()
+
+    return datos
+
+def calcular_resumen_filtrado(datos):
+    if datos.empty:
+        return pd.DataFrame()
+
+    resumen = (
+        datos.groupby("nombre_programa")
+        .agg(
+            total_competencias_evaluadas=("nombre_competencia", "count"),
+            competencias_cubiertas=("estado_brecha", lambda x: (x == "Cubierta").sum()),
+            competencias_parcialmente_cubiertas=("estado_brecha", lambda x: (x == "Parcialmente cubierta").sum()),
+            competencias_no_cubiertas=("estado_brecha", lambda x: (x == "No cubierta").sum()),
+            brechas_altas=("nivel_brecha", lambda x: (x == "Alta").sum()),
+            brechas_medias=("nivel_brecha", lambda x: (x == "Media").sum()),
+            brechas_bajas=("nivel_brecha", lambda x: (x == "Baja").sum())
+        )
+        .reset_index()
+    )
+
+    return resumen
 
 def mostrar_inicio(resumen, criticas, brecha_completa):
     st.title("Observatorio Laboral UniSabana")
@@ -381,13 +459,28 @@ def mostrar_inicio(resumen, criticas, brecha_completa):
     )
 
 
-def mostrar_resumen_programas(resumen):
+def mostrar_resumen_programas(brecha_completa):
     st.title("Resumen por programa")
     st.write(
-        "Esta sección muestra la cantidad de competencias evaluadas y el nivel de brecha "
-        "identificado para cada programa académico."
+        "Esta sección resume las brechas por programa académico aplicando filtros "
+        "globales sobre la información extraída de las fuentes cargadas."
     )
 
+    datos_filtrados = aplicar_filtros_base(brecha_completa, prefijo="resumen")
+
+    resumen = calcular_resumen_filtrado(datos_filtrados)
+
+    if resumen.empty:
+        st.warning("No hay datos para los filtros seleccionados.")
+        return
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Programas filtrados", resumen["nombre_programa"].nunique())
+    kpi2.metric("Competencias evaluadas", int(resumen["total_competencias_evaluadas"].sum()))
+    kpi3.metric("Brechas altas", int(resumen["brechas_altas"].sum()))
+    kpi4.metric("No cubiertas", int(resumen["competencias_no_cubiertas"].sum()))
+
+    st.subheader("Tabla resumen")
     st.dataframe(resumen, use_container_width=True)
 
     fig = px.bar(
@@ -403,24 +496,27 @@ def mostrar_resumen_programas(resumen):
         }
     )
     st.plotly_chart(fig, use_container_width=True)
-
-
 def mostrar_competencias_criticas(criticas):
     st.title("Competencias críticas")
     st.write(
-        "Aquí se muestran las competencias con brecha alta o media. Estas son las más "
-        "importantes para priorizar acciones académicas o formativas."
+        "Aquí se muestran las competencias con brecha alta o media. "
+        "Los filtros permiten priorizar análisis por programa, facultad, fuente, sector, "
+        "cobertura geográfica y nivel de demanda."
     )
 
-    programas = ["Todos"] + sorted(criticas["nombre_programa"].dropna().unique().tolist())
-    programa = st.selectbox("Selecciona un programa académico", programas)
+    datos = aplicar_filtros_base(criticas, prefijo="criticas")
 
-    if programa != "Todos":
-        datos = criticas[criticas["nombre_programa"] == programa]
-    else:
-        datos = criticas
+    if datos.empty:
+        st.warning("No hay competencias críticas para los filtros seleccionados.")
+        return
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Registros críticos", len(datos))
+    col2.metric("Competencias únicas", datos["nombre_competencia"].nunique())
+    col3.metric("Brechas altas", int((datos["nivel_brecha"] == "Alta").sum()))
+    col4.metric("Fuentes", datos["fuente"].nunique() if "fuente" in datos.columns else 0)
+
+    col_graf1, col_graf2 = st.columns(2)
 
     conteo_nivel = datos["nivel_brecha"].value_counts().reset_index()
     conteo_nivel.columns = ["nivel_brecha", "cantidad"]
@@ -429,9 +525,9 @@ def mostrar_competencias_criticas(criticas):
         conteo_nivel,
         names="nivel_brecha",
         values="cantidad",
-        title="Distribución de competencias críticas por nivel de brecha"
+        title="Distribución por nivel de brecha"
     )
-    col1.plotly_chart(fig_nivel, use_container_width=True)
+    col_graf1.plotly_chart(fig_nivel, use_container_width=True)
 
     conteo_tipo = datos["tipo_competencia"].value_counts().reset_index()
     conteo_tipo.columns = ["tipo_competencia", "cantidad"]
@@ -446,115 +542,493 @@ def mostrar_competencias_criticas(criticas):
             "cantidad": "Cantidad"
         }
     )
-    col2.plotly_chart(fig_tipo, use_container_width=True)
+    col_graf2.plotly_chart(fig_tipo, use_container_width=True)
 
+    st.subheader("Tabla de competencias críticas")
     st.dataframe(datos, use_container_width=True)
-
 
 def mostrar_brecha_detallada(brecha_completa):
     st.title("Detalle de brecha oferta-demanda")
     st.write(
-        "Esta tabla integra programa académico, competencia de mercado, estado de brecha, "
-        "justificación y recomendación. Es la vista principal para análisis detallado."
+        "Esta tabla integra programa académico, competencia de mercado, fuente, cobertura, "
+        "estado de brecha, justificación y recomendación."
     )
 
-    programas = ["Todos"] + sorted(brecha_completa["nombre_programa"].dropna().unique().tolist())
-    estados = ["Todos"] + sorted(brecha_completa["estado_brecha"].dropna().unique().tolist())
-    niveles = ["Todos"] + sorted(brecha_completa["nivel_brecha"].dropna().unique().tolist())
+    datos = aplicar_filtros_base(brecha_completa, prefijo="detalle")
+
+    st.markdown("### Filtros específicos de brecha")
 
     col1, col2, col3 = st.columns(3)
-    programa = col1.selectbox("Programa", programas)
-    estado = col2.selectbox("Estado de brecha", estados)
-    nivel = col3.selectbox("Nivel de brecha", niveles)
 
-    datos = brecha_completa.copy()
+    tipo_competencia = col1.selectbox(
+        "Tipo de competencia",
+        obtener_opciones_filtro(datos, "tipo_competencia"),
+        key="detalle_tipo_competencia"
+    )
 
-    if programa != "Todos":
-        datos = datos[datos["nombre_programa"] == programa]
+    nivel_demanda = col2.selectbox(
+        "Nivel de demanda",
+        obtener_opciones_filtro(datos, "nivel_demanda"),
+        key="detalle_nivel_demanda"
+    )
 
-    if estado != "Todos":
-        datos = datos[datos["estado_brecha"] == estado]
+    nivel_brecha = col3.selectbox(
+        "Nivel de brecha",
+        obtener_opciones_filtro(datos, "nivel_brecha"),
+        key="detalle_nivel_brecha"
+    )
 
-    if nivel != "Todos":
-        datos = datos[datos["nivel_brecha"] == nivel]
+    col4, col5, col6 = st.columns(3)
+
+    estado_brecha = col4.selectbox(
+        "Estado de brecha",
+        obtener_opciones_filtro(datos, "estado_brecha"),
+        key="detalle_estado_brecha"
+    )
+
+    sector = col5.selectbox(
+        "Sector económico",
+        obtener_opciones_filtro(datos, "sector"),
+        key="detalle_sector"
+    )
+
+    periodo = col6.selectbox(
+        "Periodo",
+        obtener_opciones_filtro(datos, "periodo"),
+        key="detalle_periodo"
+    )
+
+    filtros_brecha = {
+        "tipo_competencia": tipo_competencia,
+        "nivel_demanda": nivel_demanda,
+        "nivel_brecha": nivel_brecha,
+        "estado_brecha": estado_brecha,
+        "sector": sector,
+        "periodo": periodo
+    }
+
+    for columna, valor in filtros_brecha.items():
+        if valor != "Todos" and columna in datos.columns:
+            datos = datos[datos[columna].astype(str) == valor]
+
+    st.divider()
+
+    if datos.empty:
+        st.warning("No hay datos para los filtros seleccionados.")
+        return
 
     columnas = [
         "nombre_programa",
+        "facultad",
         "nombre_competencia",
         "tipo_competencia",
         "categoria",
+        "sector",
+        "cobertura_geografica",
+        "fuente",
+        "periodo",
         "nivel_demanda",
         "estado_brecha",
         "nivel_brecha",
+        "frecuencia_aparicion",
+        "cantidad_fuentes",
         "justificacion",
         "recomendacion"
     ]
 
-    st.dataframe(datos[columnas], use_container_width=True)
+    columnas_existentes = [col for col in columnas if col in datos.columns]
 
+    st.dataframe(datos[columnas_existentes], use_container_width=True)
+
+def mostrar_programas_en_riesgo(programas_riesgo):
+    st.title("Programas en riesgo")
+    st.write(
+        "Este módulo identifica programas con señales de riesgo por baja cobertura "
+        "frente al mercado, concentración de brechas altas y transformación acelerada "
+        "del perfil profesional."
+    )
+
+    datos = programas_riesgo.copy()
+
+    st.markdown("### Filtros del módulo")
+
+    col1, col2, col3 = st.columns(3)
+
+    programa = col1.selectbox(
+        "Programa académico",
+        obtener_opciones_filtro(datos, "nombre_programa"),
+        key="riesgo_programa"
+    )
+
+    cobertura = col2.selectbox(
+        "Cobertura geográfica",
+        obtener_opciones_filtro(datos, "cobertura_geografica"),
+        key="riesgo_cobertura"
+    )
+
+    nivel_riesgo = col3.selectbox(
+        "Nivel de riesgo",
+        obtener_opciones_filtro(datos, "nivel_riesgo"),
+        key="riesgo_nivel"
+    )
+
+    col4, col5 = st.columns(2)
+
+    tipo_senal = col4.selectbox(
+        "Tipo de señal de riesgo",
+        [
+            "Todas",
+            "Baja cobertura frente al mercado",
+            "Concentración de brechas altas",
+            "Transformación acelerada del perfil"
+        ],
+        key="riesgo_senal"
+    )
+
+    orden = col5.selectbox(
+        "Ordenar por",
+        [
+            "Mayor riesgo",
+            "Mayor no cobertura",
+            "Mayor transformación del perfil",
+            "Mayor brecha alta"
+        ],
+        key="riesgo_orden"
+    )
+
+    if programa != "Todos":
+        datos = datos[datos["nombre_programa"].astype(str) == programa]
+
+    if cobertura != "Todos" and "cobertura_geografica" in datos.columns:
+        datos = datos[datos["cobertura_geografica"].astype(str) == cobertura]
+
+    if nivel_riesgo != "Todos":
+        datos = datos[datos["nivel_riesgo"].astype(str) == nivel_riesgo]
+
+    if tipo_senal == "Baja cobertura frente al mercado":
+        datos = datos[datos["porcentaje_no_cobertura"] >= 35]
+
+    elif tipo_senal == "Concentración de brechas altas":
+        datos = datos[datos["porcentaje_brecha_alta"] >= 25]
+
+    elif tipo_senal == "Transformación acelerada del perfil":
+        datos = datos[datos["porcentaje_transformacion_perfil"] >= 40]
+
+    if datos.empty:
+        st.warning("No hay programas en riesgo para los filtros seleccionados.")
+        return
+
+    st.divider()
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric(
+        "Programas evaluados",
+        datos["nombre_programa"].nunique()
+    )
+
+    col2.metric(
+        "Riesgo alto",
+        int((datos["nivel_riesgo"] == "Alto").sum())
+    )
+
+    col3.metric(
+        "Promedio no cobertura",
+        f"{datos['porcentaje_no_cobertura'].mean():.1f}%"
+    )
+
+    col4.metric(
+        "Promedio transformación",
+        f"{datos['porcentaje_transformacion_perfil'].mean():.1f}%"
+    )
+
+    orden_riesgo = {
+        "Alto": 1,
+        "Medio": 2,
+        "Bajo": 3
+    }
+
+    datos_ordenados = datos.copy()
+    datos_ordenados["orden_riesgo"] = datos_ordenados["nivel_riesgo"].map(orden_riesgo).fillna(4)
+
+    if orden == "Mayor riesgo":
+        datos_ordenados = datos_ordenados.sort_values(
+            ["orden_riesgo", "porcentaje_no_cobertura"],
+            ascending=[True, False]
+        )
+
+    elif orden == "Mayor no cobertura":
+        datos_ordenados = datos_ordenados.sort_values(
+            "porcentaje_no_cobertura",
+            ascending=False
+        )
+
+    elif orden == "Mayor transformación del perfil":
+        datos_ordenados = datos_ordenados.sort_values(
+            "porcentaje_transformacion_perfil",
+            ascending=False
+        )
+
+    elif orden == "Mayor brecha alta":
+        datos_ordenados = datos_ordenados.sort_values(
+            "porcentaje_brecha_alta",
+            ascending=False
+        )
+
+    st.divider()
+
+    col_graf1, col_graf2 = st.columns(2)
+
+    conteo_riesgo = datos_ordenados["nivel_riesgo"].value_counts().reset_index()
+    conteo_riesgo.columns = ["nivel_riesgo", "cantidad"]
+
+    fig_riesgo = px.bar(
+        conteo_riesgo,
+        x="nivel_riesgo",
+        y="cantidad",
+        title="Distribución de programas por nivel de riesgo",
+        labels={
+            "nivel_riesgo": "Nivel de riesgo",
+            "cantidad": "Cantidad"
+        }
+    )
+    col_graf1.plotly_chart(fig_riesgo, use_container_width=True)
+
+    fig_transformacion = px.scatter(
+        datos_ordenados,
+        x="porcentaje_no_cobertura",
+        y="porcentaje_transformacion_perfil",
+        size="total_competencias_evaluadas",
+        hover_name="nombre_programa",
+        title="Riesgo por no cobertura y transformación del perfil",
+        labels={
+            "porcentaje_no_cobertura": "% no cobertura",
+            "porcentaje_transformacion_perfil": "% transformación del perfil",
+            "total_competencias_evaluadas": "Competencias evaluadas"
+        }
+    )
+    col_graf2.plotly_chart(fig_transformacion, use_container_width=True)
+
+    columnas = [
+        "nombre_programa",
+        "facultad",
+        "cobertura_geografica",
+        "total_competencias_evaluadas",
+        "competencias_no_cubiertas",
+        "brechas_altas",
+        "brechas_medias",
+        "senales_transformacion_perfil",
+        "porcentaje_no_cobertura",
+        "porcentaje_brecha_alta",
+        "porcentaje_transformacion_perfil",
+        "nivel_riesgo",
+        "diagnostico_riesgo",
+        "recomendacion"
+    ]
+
+    columnas_existentes = [col for col in columnas if col in datos_ordenados.columns]
+
+    st.subheader("Tabla de programas en riesgo")
+    st.dataframe(datos_ordenados[columnas_existentes], use_container_width=True)
+
+def mostrar_nuevas_oportunidades(nuevas_oportunidades):
+    st.title("Nuevas oportunidades")
+    st.write(
+        "Este módulo identifica oportunidades laborales a partir de las fuentes cargadas. "
+        "Se enfoca únicamente en tendencias de empleo, competencias y rangos salariales."
+    )
+
+    datos = nuevas_oportunidades.copy()
+
+    st.markdown("### Filtros del módulo")
+
+    col1, col2, col3 = st.columns(3)
+
+    programa = col1.selectbox(
+        "Programa académico",
+        obtener_opciones_filtro(datos, "nombre_programa"),
+        key="oportunidades_programa"
+    )
+
+    cobertura = col2.selectbox(
+        "Cobertura geográfica",
+        obtener_opciones_filtro(datos, "cobertura_geografica"),
+        key="oportunidades_cobertura"
+    )
+
+    fuente = col3.selectbox(
+        "Fuente",
+        obtener_opciones_filtro(datos, "fuente"),
+        key="oportunidades_fuente"
+    )
+
+    if programa != "Todos" and "nombre_programa" in datos.columns:
+        datos = datos[datos["nombre_programa"].astype(str) == programa]
+
+    if cobertura != "Todos" and "cobertura_geografica" in datos.columns:
+        datos = datos[datos["cobertura_geografica"].astype(str) == cobertura]
+
+    if fuente != "Todos" and "fuente" in datos.columns:
+        datos = datos[datos["fuente"].astype(str) == fuente]
+
+    if datos.empty:
+        st.warning("No hay nuevas oportunidades para los filtros seleccionados.")
+        return
+
+    st.divider()
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Oportunidades detectadas", len(datos))
+    col2.metric("Competencias únicas", datos["competencia"].nunique())
+    col3.metric("Fuentes", datos["fuente"].nunique())
+
+    st.divider()
+
+    conteo_tendencias = datos["tendencia_empleo"].value_counts().reset_index()
+    conteo_tendencias.columns = ["tendencia_empleo", "cantidad"]
+
+    fig_tendencias = px.bar(
+        conteo_tendencias,
+        x="tendencia_empleo",
+        y="cantidad",
+        title="Tendencias de empleo detectadas",
+        labels={
+            "tendencia_empleo": "Tendencia de empleo",
+            "cantidad": "Cantidad"
+        }
+    )
+    st.plotly_chart(fig_tendencias, use_container_width=True)
+
+    columnas = [
+        "tendencia_empleo",
+        "competencia",
+        "rango_salarial"
+    ]
+
+    tabla_oportunidades = datos[columnas].rename(columns={
+        "tendencia_empleo": "Tendencia de empleo",
+        "competencia": "Competencia",
+        "rango_salarial": "Rango salarial"
+    })
+
+    st.subheader("Tabla ejecutiva de nuevas oportunidades")
+    st.dataframe(tabla_oportunidades, use_container_width=True)
 
 def mostrar_administrador_fuentes():
     st.title("Administrador de fuentes")
     st.write(
-        "Carga uno o varios PDFs del mercado laboral. La plataforma extrae variables, "
-        "las guarda en Supabase y actualiza las vistas usadas por el módulo de brecha "
-        "oferta-demanda."
+        "Carga fuentes del mercado laboral y de oferta académica. Los PDFs se analizan "
+        "por palabras clave y los Excels se cargan como datos estructurados para alimentar "
+        "las tablas del observatorio."
     )
 
-    archivos = st.file_uploader(
-        "Sube PDFs para alimentar el observatorio",
-        type=["pdf"],
-        accept_multiple_files=True
+    tipo_fuente = st.radio(
+        "Selecciona el tipo de fuente que quieres cargar",
+        ["PDFs", "Excels"],
+        horizontal=True
     )
 
-    if not archivos:
-        st.info("Sube al menos un PDF para iniciar el procesamiento.")
-        return
+    if tipo_fuente == "PDFs":
+        archivos = st.file_uploader(
+            "Sube PDFs para alimentar el observatorio",
+            type=["pdf"],
+            accept_multiple_files=True,
+            key="uploader_pdfs"
+        )
 
-    st.write(f"PDFs cargados: {len(archivos)}")
-
-    if st.button("Procesar PDFs y actualizar observatorio", type="primary"):
-        todos_resultados = []
-
-        with st.spinner("Extrayendo variables desde los PDFs..."):
-            for archivo in archivos:
-                paginas = extraer_texto_pdf_subido(archivo)
-                resultados_pdf = buscar_variables_en_paginas(archivo.name, paginas)
-                todos_resultados.extend(resultados_pdf)
-
-        if not todos_resultados:
-            st.warning("No se detectaron variables laborales en los PDFs cargados.")
+        if not archivos:
+            st.info("Sube al menos un PDF para iniciar el procesamiento.")
             return
 
-        df_resultados = pd.DataFrame(todos_resultados)
+        st.write(f"PDFs cargados: {len(archivos)}")
 
-        with st.spinner("Guardando resultados en Supabase..."):
-            resumen_carga = guardar_resultados_pdf_en_supabase(todos_resultados)
+        if st.button("Procesar PDFs y actualizar observatorio", type="primary"):
+            todos_resultados = []
 
-        st.cache_data.clear()
+            with st.spinner("Extrayendo variables desde los PDFs..."):
+                for archivo in archivos:
+                    paginas = extraer_texto_pdf_subido(archivo)
+                    resultados_pdf = buscar_variables_en_paginas(archivo.name, paginas)
+                    todos_resultados.extend(resultados_pdf)
 
-        st.success("Procesamiento terminado. El observatorio ya usa la información cargada.")
+            if not todos_resultados:
+                st.warning("No se detectaron variables laborales en los PDFs cargados.")
+                return
 
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Variables detectadas", len(df_resultados))
-        col2.metric("PDFs procesados", df_resultados["archivo"].nunique())
-        col3.metric("Variables nuevas", resumen_carga["variables_insertadas"])
-        col4.metric("Competencias nuevas", resumen_carga["competencias_insertadas"])
+            df_resultados = pd.DataFrame(todos_resultados)
 
-        if resumen_carga["registros_omitidos"] > 0:
-            st.info(
-                f"Registros omitidos por duplicado o datos incompletos: "
-                f"{resumen_carga['registros_omitidos']}"
+            with st.spinner("Guardando resultados en Supabase..."):
+                resumen_carga = guardar_resultados_pdf_en_supabase(todos_resultados)
+
+            st.cache_data.clear()
+
+            st.success("Procesamiento terminado. El observatorio ya usa la información cargada.")
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Variables detectadas", len(df_resultados))
+            col2.metric("PDFs procesados", df_resultados["archivo"].nunique())
+            col3.metric("Variables nuevas", resumen_carga["variables_insertadas"])
+            col4.metric("Competencias nuevas", resumen_carga["competencias_insertadas"])
+
+            if resumen_carga["registros_omitidos"] > 0:
+                st.info(
+                    f"Registros omitidos por duplicado o datos incompletos: "
+                    f"{resumen_carga['registros_omitidos']}"
+                )
+
+            st.subheader("Vista previa de variables extraídas")
+            st.dataframe(df_resultados, use_container_width=True)
+
+    elif tipo_fuente == "Excels":
+        st.markdown("### Cargar datos estructurados desde Excel")
+        st.write(
+            "El Excel debe tener encabezados claros. La plataforma reconoce columnas como "
+            "competencia, nombre_competencia, tipo, categoria, sector, cargo, programa, "
+            "facultad, nivel y evidencia."
+        )
+
+        tipo_excel = st.selectbox(
+            "¿Qué información contiene el Excel?",
+            [
+                "Competencias de mercado",
+                "Programas académicos",
+                "Competencias de programas"
+            ]
+        )
+
+        archivo_excel = st.file_uploader(
+            "Sube un archivo Excel",
+            type=["xlsx", "xls"],
+            accept_multiple_files=False,
+            key="uploader_excels"
+        )
+
+        if not archivo_excel:
+            st.info("Sube un Excel para revisar su contenido.")
+            return
+
+        hojas = leer_excel_subido(archivo_excel)
+        nombres_hojas = list(hojas.keys())
+
+        hoja_seleccionada = st.selectbox("Selecciona la hoja que quieres cargar", nombres_hojas)
+        df_excel = hojas[hoja_seleccionada]
+
+        st.subheader("Vista previa del Excel")
+        st.dataframe(df_excel.head(50), use_container_width=True)
+
+        if st.button("Cargar Excel a Supabase", type="primary"):
+            st.warning(
+                "Ya podemos leer y previsualizar Excels. "
+                "El siguiente paso es conectar esta carga a las tablas específicas de Supabase."
             )
-
-        st.subheader("Vista previa de variables extraídas")
-        st.dataframe(df_resultados, use_container_width=True)
-
 
 try:
     resumen = cargar_resumen_brechas()
     criticas = cargar_competencias_criticas()
     brecha_completa = cargar_brecha_completa()
+    programas_riesgo = cargar_programas_en_riesgo()
+    nuevas_oportunidades = cargar_nuevas_oportunidades()
 
     st.sidebar.title("Observatorio Laboral")
     st.sidebar.write("Alumni UniSabana - IN-DES Challenge")
@@ -564,6 +1038,8 @@ try:
         [
             "Inicio",
             "Brechas oferta-demanda",
+            "Programas en riesgo",
+            "Nuevas oportunidades",
             "Administrador de fuentes"
         ]
     )
@@ -590,11 +1066,13 @@ try:
         mostrar_inicio(resumen, criticas, brecha_completa)
     elif modulo_principal == "Brechas oferta-demanda":
         if seccion_brechas == "Resumen por programa":
-            mostrar_resumen_programas(resumen)
+            mostrar_resumen_programas(brecha_completa)
         elif seccion_brechas == "Competencias críticas":
             mostrar_competencias_criticas(criticas)
-        elif seccion_brechas == "Detalle de brecha":
-            mostrar_brecha_detallada(brecha_completa)
+    elif modulo_principal == "Programas en riesgo":
+        mostrar_programas_en_riesgo(programas_riesgo)
+    elif modulo_principal == "Nuevas oportunidades":
+        mostrar_nuevas_oportunidades(nuevas_oportunidades)
     elif modulo_principal == "Administrador de fuentes":
         mostrar_administrador_fuentes()
 
