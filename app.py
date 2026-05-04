@@ -1879,6 +1879,10 @@ try:
     st.sidebar.caption("Fuente: Supabase PostgreSQL")
     st.sidebar.caption("MVP: Observatorio laboral con 5 módulos analíticos")
 
+    if st.sidebar.button("Actualizar datos desde Supabase"):
+        st.cache_data.clear()
+        st.rerun()
+
     if modulo_principal == "Inicio":
         mostrar_inicio(resumen, criticas, brecha_completa)
     elif modulo_principal == "Brechas oferta-demanda":
