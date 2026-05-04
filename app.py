@@ -1,5 +1,6 @@
 from io import BytesIO
 import re
+import time
 
 import pandas as pd
 import plotly.express as px
@@ -1563,11 +1564,36 @@ def mostrar_administrador_fuentes():
         if st.button("Procesar PDFs y actualizar observatorio", type="primary"):
             todos_resultados = []
 
-            with st.spinner("Extrayendo variables desde los PDFs..."):
-                for archivo in archivos:
-                    paginas = extraer_texto_pdf_subido(archivo)
-                    resultados_pdf = buscar_variables_en_paginas(archivo.name, paginas)
-                    todos_resultados.extend(resultados_pdf)
+            progreso = st.progress(0)
+            estado_proceso = st.empty()
+            tiempo_proceso = st.empty()
+            inicio_proceso = time.time()
+            total_archivos = len(archivos)
+
+            for indice, archivo in enumerate(archivos, start=1):
+                estado_proceso.info(
+                    f"Procesando archivo {indice} de {total_archivos}: {archivo.name}"
+                )
+
+                paginas = extraer_texto_pdf_subido(archivo)
+                resultados_pdf = buscar_variables_en_paginas(archivo.name, paginas)
+                todos_resultados.extend(resultados_pdf)
+
+                porcentaje_avance = indice / total_archivos
+                progreso.progress(porcentaje_avance)
+
+                tiempo_transcurrido = time.time() - inicio_proceso
+                tiempo_promedio = tiempo_transcurrido / indice
+                archivos_restantes = total_archivos - indice
+                tiempo_estimado_restante = tiempo_promedio * archivos_restantes
+
+                tiempo_proceso.write(
+                    f"Tiempo transcurrido: {tiempo_transcurrido:.1f} s | "
+                    f"Tiempo estimado restante: {tiempo_estimado_restante:.1f} s"
+                )
+
+            estado_proceso.success("Extracción de PDFs terminada.")
+            progreso.progress(1.0)
 
             if not todos_resultados:
                 st.warning("No se detectaron variables laborales en los PDFs cargados.")
@@ -1575,11 +1601,23 @@ def mostrar_administrador_fuentes():
 
             df_resultados = pd.DataFrame(todos_resultados)
 
-            with st.spinner("Guardando resultados en Supabase..."):
-                resumen_carga = guardar_resultados_pdf_en_supabase(todos_resultados)
+            estado_proceso.info("Guardando resultados en Supabase...")
+            tiempo_guardado_inicio = time.time()
+            resumen_carga = guardar_resultados_pdf_en_supabase(todos_resultados)
+            tiempo_guardado = time.time() - tiempo_guardado_inicio
 
-            with st.spinner("Recalculando módulos analíticos..."):
-                recalcular_modulos_analiticos()
+            estado_proceso.info("Recalculando módulos analíticos...")
+            tiempo_recalculo_inicio = time.time()
+            recalcular_modulos_analiticos()
+            tiempo_recalculo = time.time() - tiempo_recalculo_inicio
+
+            tiempo_total = time.time() - inicio_proceso
+            tiempo_proceso.write(
+                f"Tiempo total: {tiempo_total:.1f} s | "
+                f"Guardado en Supabase: {tiempo_guardado:.1f} s | "
+                f"Recálculo analítico: {tiempo_recalculo:.1f} s"
+            )
+            estado_proceso.success("Proceso completo.")
 
             st.cache_data.clear()
 
@@ -1638,16 +1676,41 @@ def mostrar_administrador_fuentes():
         st.dataframe(df_excel.head(50), use_container_width=True)
 
         if st.button("Cargar Excel a Supabase", type="primary"):
-            with st.spinner("Cargando Excel en Supabase..."):
-                if tipo_excel == "Competencias de mercado":
-                    resultado = guardar_excel_competencias_mercado(archivo_excel.name, df_excel)
-                elif tipo_excel == "Programas académicos":
-                    resultado = guardar_excel_programas_academicos(df_excel)
-                else:
-                    resultado = guardar_excel_competencias_programa(df_excel)
+            progreso = st.progress(0)
+            estado_proceso = st.empty()
+            tiempo_proceso = st.empty()
+            inicio_proceso = time.time()
 
-            with st.spinner("Recalculando módulos analíticos..."):
-                recalcular_modulos_analiticos()
+            estado_proceso.info("Cargando Excel en Supabase...")
+            progreso.progress(0.25)
+
+            if tipo_excel == "Competencias de mercado":
+                resultado = guardar_excel_competencias_mercado(archivo_excel.name, df_excel)
+            elif tipo_excel == "Programas académicos":
+                resultado = guardar_excel_programas_academicos(df_excel)
+            else:
+                resultado = guardar_excel_competencias_programa(df_excel)
+
+            progreso.progress(0.65)
+            tiempo_carga = time.time() - inicio_proceso
+            tiempo_proceso.write(
+                f"Tiempo de carga a Supabase: {tiempo_carga:.1f} s | "
+                "Recalculando módulos analíticos..."
+            )
+
+            estado_proceso.info("Recalculando módulos analíticos...")
+            tiempo_recalculo_inicio = time.time()
+            recalcular_modulos_analiticos()
+            tiempo_recalculo = time.time() - tiempo_recalculo_inicio
+
+            progreso.progress(1.0)
+            tiempo_total = time.time() - inicio_proceso
+            tiempo_proceso.write(
+                f"Tiempo total: {tiempo_total:.1f} s | "
+                f"Carga Excel: {tiempo_carga:.1f} s | "
+                f"Recálculo analítico: {tiempo_recalculo:.1f} s"
+            )
+            estado_proceso.success("Proceso completo.")
 
             st.cache_data.clear()
 
