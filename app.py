@@ -133,6 +133,7 @@ DICCIONARIO_VARIABLES = {
 }
 
 
+
 @st.cache_resource
 def conectar_supabase():
     url = st.secrets["SUPABASE_URL"]
@@ -140,55 +141,65 @@ def conectar_supabase():
     return create_client(url, key)
 
 
+# Helper para cargar tablas completas por lotes
+def cargar_tabla_completa(nombre_tabla, tamano_lote=1000):
+    supabase = conectar_supabase()
+    registros = []
+    inicio = 0
+
+    while True:
+        fin = inicio + tamano_lote - 1
+        respuesta = (
+            supabase.table(nombre_tabla)
+            .select("*")
+            .range(inicio, fin)
+            .execute()
+        )
+
+        lote = respuesta.data or []
+        registros.extend(lote)
+
+        if len(lote) < tamano_lote:
+            break
+
+        inicio += tamano_lote
+
+    return pd.DataFrame(registros)
+
+
 @st.cache_data(ttl=600)
 def cargar_resumen_brechas():
-    supabase = conectar_supabase()
-    respuesta = supabase.table("resumen_brechas_por_programa_pdf").select("*").execute()
-    return pd.DataFrame(respuesta.data)
+    return cargar_tabla_completa("resumen_brechas_por_programa_pdf")
 
 
 @st.cache_data(ttl=600)
 def cargar_competencias_criticas():
-    supabase = conectar_supabase()
-    respuesta = supabase.table("vista_competencias_criticas_pdf").select("*").execute()
-    return pd.DataFrame(respuesta.data)
+    return cargar_tabla_completa("vista_competencias_criticas_pdf")
 
 
 @st.cache_data(ttl=600)
 def cargar_brecha_completa():
-    supabase = conectar_supabase()
-    respuesta = supabase.table("vista_brecha_oferta_demanda_pdf").select("*").execute()
-    return pd.DataFrame(respuesta.data)
+    return cargar_tabla_completa("vista_brecha_oferta_demanda_pdf")
 
 @st.cache_data(ttl=600)
 def cargar_programas_en_riesgo():
-    supabase = conectar_supabase()
-    respuesta = supabase.table("programas_en_riesgo").select("*").execute()
-    return pd.DataFrame(respuesta.data)
+    return cargar_tabla_completa("programas_en_riesgo")
 
 @st.cache_data(ttl=600)
 def cargar_nuevas_oportunidades():
-    supabase = conectar_supabase()
-    respuesta = supabase.table("nuevas_oportunidades").select("*").execute()
-    return pd.DataFrame(respuesta.data)
+    return cargar_tabla_completa("nuevas_oportunidades")
 
 @st.cache_data(ttl=600)
 def cargar_competencias_emergentes():
-    supabase = conectar_supabase()
-    respuesta = supabase.table("competencias_emergentes").select("*").execute()
-    return pd.DataFrame(respuesta.data)
+    return cargar_tabla_completa("competencias_emergentes")
 
 @st.cache_data(ttl=600)
 def cargar_sectores_crecimiento():
-    supabase = conectar_supabase()
-    respuesta = supabase.table("sectores_crecimiento").select("*").execute()
-    return pd.DataFrame(respuesta.data)
+    return cargar_tabla_completa("sectores_crecimiento")
 
 @st.cache_data(ttl=600)
 def cargar_brechas_automaticas():
-    supabase = conectar_supabase()
-    respuesta = supabase.table("vista_comparacion_automatica_brechas").select("*").execute()
-    return pd.DataFrame(respuesta.data)
+    return cargar_tabla_completa("vista_comparacion_automatica_brechas")
 
 
 def extraer_porcentajes(texto):
