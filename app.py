@@ -20,21 +20,21 @@ def conectar_supabase():
 @st.cache_data(ttl=600)
 def cargar_resumen_brechas():
     supabase = conectar_supabase()
-    respuesta = supabase.table("resumen_brechas_por_programa").select("*").execute()
+    respuesta = supabase.table("resumen_brechas_por_programa_pdf").select("*").execute()
     return pd.DataFrame(respuesta.data)
 
 
 @st.cache_data(ttl=600)
 def cargar_competencias_criticas():
     supabase = conectar_supabase()
-    respuesta = supabase.table("vista_competencias_criticas").select("*").execute()
+    respuesta = supabase.table("vista_competencias_criticas_pdf").select("*").execute()
     return pd.DataFrame(respuesta.data)
 
 
 @st.cache_data(ttl=600)
 def cargar_brecha_completa():
     supabase = conectar_supabase()
-    respuesta = supabase.table("vista_brecha_oferta_demanda").select("*").execute()
+    respuesta = supabase.table("vista_brecha_oferta_demanda_pdf").select("*").execute()
     return pd.DataFrame(respuesta.data)
 
 @st.cache_data(ttl=600)
@@ -296,8 +296,7 @@ try:
                 [
                     "Resumen por programa",
                     "Competencias críticas",
-                    "Detalle de brecha",
-                    "Brechas automáticas desde PDFs"
+                    "Detalle de brecha"
                 ],
                 label_visibility="collapsed"
             )
@@ -315,8 +314,6 @@ try:
             mostrar_competencias_criticas(criticas)
         elif seccion_brechas == "Detalle de brecha":
             mostrar_brecha_detallada(brecha_completa)
-        elif seccion_brechas == "Brechas automáticas desde PDFs":
-            mostrar_brechas_automaticas(brechas_automaticas)
 
 except Exception as e:
     st.error("No se pudo conectar con Supabase o cargar los datos.")
