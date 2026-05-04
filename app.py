@@ -730,7 +730,32 @@ def guardar_resultados_pdf_en_supabase(resultados):
 
 def recalcular_modulos_analiticos():
     supabase = conectar_supabase()
-    return supabase.rpc("recalcular_modulos_analiticos").execute()
+
+    funciones_recalculo = [
+        "recalcular_programas_en_riesgo",
+        "recalcular_nuevas_oportunidades",
+        "recalcular_competencias_emergentes",
+        "recalcular_sectores_crecimiento"
+    ]
+
+    resultados = []
+
+    for nombre_funcion in funciones_recalculo:
+        try:
+            respuesta = supabase.rpc(nombre_funcion).execute()
+            resultados.append({
+                "modulo": nombre_funcion,
+                "estado": "ok",
+                "respuesta": respuesta.data
+            })
+        except Exception as error:
+            resultados.append({
+                "modulo": nombre_funcion,
+                "estado": "error",
+                "error": str(error)
+            })
+
+    return resultados
 
 
 def mostrar_kpis(resumen, criticas, brecha_completa):
@@ -1675,8 +1700,20 @@ def mostrar_administrador_fuentes():
 
             estado_proceso.info("Recalculando módulos analíticos...")
             tiempo_recalculo_inicio = time.time()
-            recalcular_modulos_analiticos()
+            resultados_recalculo = recalcular_modulos_analiticos()
             tiempo_recalculo = time.time() - tiempo_recalculo_inicio
+
+            modulos_con_error = [
+                resultado for resultado in resultados_recalculo
+                if resultado["estado"] == "error"
+            ]
+
+            if modulos_con_error:
+                st.warning(
+                    "La fuente se guardó, pero uno o más módulos analíticos no se recalcularon por completo. "
+                    "Puedes intentarlo nuevamente o recalcular desde Supabase."
+                )
+                st.dataframe(pd.DataFrame(modulos_con_error), use_container_width=True)
 
             tiempo_total = time.time() - inicio_proceso
             tiempo_proceso.write(
@@ -1767,8 +1804,20 @@ def mostrar_administrador_fuentes():
 
             estado_proceso.info("Recalculando módulos analíticos...")
             tiempo_recalculo_inicio = time.time()
-            recalcular_modulos_analiticos()
+            resultados_recalculo = recalcular_modulos_analiticos()
             tiempo_recalculo = time.time() - tiempo_recalculo_inicio
+
+            modulos_con_error = [
+                resultado for resultado in resultados_recalculo
+                if resultado["estado"] == "error"
+            ]
+
+            if modulos_con_error:
+                st.warning(
+                    "El Excel se guardó, pero uno o más módulos analíticos no se recalcularon por completo. "
+                    "Puedes intentarlo nuevamente o recalcular desde Supabase."
+                )
+                st.dataframe(pd.DataFrame(modulos_con_error), use_container_width=True)
 
             progreso.progress(1.0)
             tiempo_total = time.time() - inicio_proceso
