@@ -165,6 +165,39 @@ def limpiar_valor(valor):
         return None
     return str(valor)
 
+def normalizar_texto_columna(texto):
+    texto = str(texto).strip().lower()
+    texto = texto.replace("á", "a")
+    texto = texto.replace("é", "e")
+    texto = texto.replace("í", "i")
+    texto = texto.replace("ó", "o")
+    texto = texto.replace("ú", "u")
+    texto = texto.replace("ñ", "n")
+    texto = texto.replace(" ", "_")
+    texto = texto.replace("-", "_")
+    texto = texto.replace("/", "_")
+    return texto
+
+
+def leer_excel_subido(archivo_subido):
+    hojas = pd.read_excel(archivo_subido, sheet_name=None)
+    hojas_limpias = {}
+
+    for nombre_hoja, df in hojas.items():
+        df = df.copy()
+        df.columns = [normalizar_texto_columna(columna) for columna in df.columns]
+        df = df.dropna(how="all")
+        hojas_limpias[nombre_hoja] = df
+
+    return hojas_limpias
+
+
+def obtener_valor_flexible(fila, posibles_columnas):
+    for columna in posibles_columnas:
+        columna_normalizada = normalizar_texto_columna(columna)
+        if columna_normalizada in fila.index and not pd.isna(fila[columna_normalizada]):
+            return fila[columna_normalizada]
+    return None
 
 def transformar_tipo(tipo_original):
     if not tipo_original:
