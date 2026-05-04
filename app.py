@@ -118,6 +118,12 @@ def cargar_competencias_emergentes():
     return pd.DataFrame(respuesta.data)
 
 @st.cache_data(ttl=600)
+def cargar_sectores_crecimiento():
+    supabase = conectar_supabase()
+    respuesta = supabase.table("sectores_crecimiento").select("*").execute()
+    return pd.DataFrame(respuesta.data)
+
+@st.cache_data(ttl=600)
 def cargar_brechas_automaticas():
     supabase = conectar_supabase()
     respuesta = supabase.table("vista_comparacion_automatica_brechas").select("*").execute()
@@ -1028,6 +1034,114 @@ def mostrar_competencias_emergentes(competencias_emergentes):
     st.subheader("Tabla ejecutiva de competencias emergentes")
     st.dataframe(tabla_emergentes, use_container_width=True)
 
+
+def mostrar_sectores_crecimiento(sectores_crecimiento):
+    st.title("Sectores con mayor crecimiento")
+    st.write(
+        "Este módulo identifica sectores con señales de expansión a partir de las fuentes cargadas. "
+        "Su objetivo es orientar decisiones de empleabilidad, orientación profesional y posibles "
+        "alianzas estratégicas con el sector productivo."
+    )
+
+    datos = sectores_crecimiento.copy()
+
+    st.markdown("### Filtros del módulo")
+
+    col1, col2, col3 = st.columns(3)
+
+    programa = col1.selectbox(
+        "Programa académico",
+        obtener_opciones_filtro(datos, "nombre_programa"),
+        key="sectores_programa"
+    )
+
+    cobertura = col2.selectbox(
+        "Cobertura geográfica",
+        obtener_opciones_filtro(datos, "cobertura_geografica"),
+        key="sectores_cobertura"
+    )
+
+    fuente = col3.selectbox(
+        "Fuente",
+        obtener_opciones_filtro(datos, "fuente"),
+        key="sectores_fuente"
+    )
+
+    col4, col5 = st.columns(2)
+
+    nivel_crecimiento = col4.selectbox(
+        "Nivel de crecimiento",
+        obtener_opciones_filtro(datos, "nivel_crecimiento"),
+        key="sectores_nivel_crecimiento"
+    )
+
+    orientacion_estrategica = col5.selectbox(
+        "Orientación estratégica",
+        obtener_opciones_filtro(datos, "orientacion_estrategica"),
+        key="sectores_orientacion"
+    )
+
+    if programa != "Todos" and "nombre_programa" in datos.columns:
+        datos = datos[datos["nombre_programa"].astype(str) == programa]
+
+    if cobertura != "Todos" and "cobertura_geografica" in datos.columns:
+        datos = datos[datos["cobertura_geografica"].astype(str) == cobertura]
+
+    if fuente != "Todos" and "fuente" in datos.columns:
+        datos = datos[datos["fuente"].astype(str) == fuente]
+
+    if nivel_crecimiento != "Todos" and "nivel_crecimiento" in datos.columns:
+        datos = datos[datos["nivel_crecimiento"].astype(str) == nivel_crecimiento]
+
+    if orientacion_estrategica != "Todos" and "orientacion_estrategica" in datos.columns:
+        datos = datos[datos["orientacion_estrategica"].astype(str) == orientacion_estrategica]
+
+    if datos.empty:
+        st.warning("No hay sectores con crecimiento para los filtros seleccionados.")
+        return
+
+    st.divider()
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Sectores identificados", datos["sector"].nunique() if "sector" in datos.columns else 0)
+    col2.metric("Registros de crecimiento", len(datos))
+    col3.metric("Fuentes", datos["fuente"].nunique() if "fuente" in datos.columns else 0)
+
+    st.divider()
+
+    conteo_sectores = datos["sector"].value_counts().reset_index()
+    conteo_sectores.columns = ["sector", "cantidad"]
+
+    fig_sectores = px.bar(
+        conteo_sectores,
+        x="sector",
+        y="cantidad",
+        title="Sectores con señales de crecimiento",
+        labels={
+            "sector": "Sector",
+            "cantidad": "Cantidad de señales"
+        }
+    )
+    st.plotly_chart(fig_sectores, use_container_width=True)
+
+    columnas = [
+        "sector",
+        "nivel_crecimiento",
+        "orientacion_estrategica"
+    ]
+
+    columnas_existentes = [col for col in columnas if col in datos.columns]
+
+    tabla_sectores = datos[columnas_existentes].rename(columns={
+        "sector": "Sector",
+        "nivel_crecimiento": "Nivel de crecimiento",
+        "orientacion_estrategica": "Orientación estratégica"
+    })
+
+    st.subheader("Tabla ejecutiva de sectores con mayor crecimiento")
+    st.dataframe(tabla_sectores, use_container_width=True)
+
 def mostrar_administrador_fuentes():
     st.title("Administrador de fuentes")
     st.write(
@@ -1143,6 +1257,7 @@ try:
     programas_riesgo = cargar_programas_en_riesgo()
     nuevas_oportunidades = cargar_nuevas_oportunidades()
     competencias_emergentes = cargar_competencias_emergentes()
+    sectores_crecimiento = cargar_sectores_crecimiento()
 
     st.sidebar.title("Observatorio Laboral")
     st.sidebar.write("Alumni UniSabana - IN-DES Challenge")
@@ -1155,6 +1270,7 @@ try:
             "Programas en riesgo",
             "Nuevas oportunidades",
             "Competencias emergentes",
+            "Sectores con mayor crecimiento",
             "Administrador de fuentes"
         ]
     )
@@ -1192,6 +1308,8 @@ try:
         mostrar_nuevas_oportunidades(nuevas_oportunidades)
     elif modulo_principal == "Competencias emergentes":
         mostrar_competencias_emergentes(competencias_emergentes)
+    elif modulo_principal == "Sectores con mayor crecimiento":
+        mostrar_sectores_crecimiento(sectores_crecimiento)
     elif modulo_principal == "Administrador de fuentes":
         mostrar_administrador_fuentes()
 
